@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Account{% endblock %}
+{% block content %}
+<h1>Admin account</h1>
+<div class="card">
+  <h2>Change admin password</h2>
+  <form method="post">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label for="current">Current password</label>
+    <input type="password" id="current" name="current" autocomplete="current-password">
+    <label for="new">New password</label>
+    <input type="password" id="new" name="new" autocomplete="new-password">
+    <div class="hint">At least 10 characters.</div>
+    <label for="repeat">Repeat new password</label>
+    <input type="password" id="repeat" name="repeat" autocomplete="new-password">
+    <div class="actions"><button>Change password</button></div>
+  </form>
+</div>
+{% endblock %}

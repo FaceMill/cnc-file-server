@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Machines{% endblock %}
+{% block content %}
+<h1>Machines</h1>
+<div class="card">
+  <table>
+    <tr><th>Machine</th><th>Type</th><th>Connection</th><th>ID</th><th>Address</th><th></th></tr>
+    {% for m in site.machines %}
+    <tr>
+      <td><a href="{{ url_for('web.machine_detail', name=m.name) }}">{{ m.label }}</a></td>
+      <td>{{ machine_types[m.type].label }}</td>
+      <td>{{ {'smb': 'Network share', 'ftp': 'FTP', 'serial': 'RS-232 DNC', 'focas': 'FOCAS'}[protocol_of(m)] }}</td>
+      <td class="mono">{{ m.name }}</td>
+      <td class="mono">{{ m.ip or 'USB serial' }}</td>
+      <td style="text-align:right">
+        <a class="btn secondary" href="{{ url_for('web.machine_detail', name=m.name) }}">{{ 'DNC / setup' if protocol_of(m) == 'serial' else ('CNC / setup' if protocol_of(m) == 'focas' else 'Setup sheet') }}</a>
+        <a class="btn secondary" href="{{ url_for('web.machine_edit', name=m.name) }}">Edit</a>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6" class="muted">No machines yet.</td></tr>
+    {% endfor %}
+  </table>
+  <div class="actions"><a class="btn" href="{{ url_for('web.machine_new') }}">Add machine</a></div>
+</div>
+<p class="hint">Each machine gets its own folder. Network-share and FTP machines get their own login that only sees
+  that folder; serial machines are fed from it by the Pi. Office users see every machine's folder in the <span class="mono">CNC</span> share.</p>
+{% endblock %}

@@ -1,0 +1,15 @@
+# Runtime state on the Pi (secrets, generated configs, certificates)
+.env
+config/
+generated/
+data/
+
+# FANUC's library if you supply your own (proprietary; never commit)
+focas/lib/*.so*
+
+# Local tooling
+__pycache__/
+*.pyc
+.DS_Store
+.vscode/
+.ruff_cache/

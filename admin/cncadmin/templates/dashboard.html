@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Status{% endblock %}
+{% block content %}
+<h1>Status</h1>
+
+<div class="card">
+  <h2>Machines</h2>
+  <table>
+    <tr><th>Machine</th><th>Connection</th><th>Address</th><th>Network</th><th>Activity</th></tr>
+    {% for m in site.machines %}
+    {% set proto = protocol_of(m) %}
+    <tr>
+      <td><a href="{{ url_for('web.machine_detail', name=m.name) }}">{{ m.label }}</a>
+        <div class="muted">{{ machine_types[m.type].label }}</div></td>
+      <td>{{ {'smb': 'Network share', 'ftp': 'FTP', 'serial': 'RS-232 DNC', 'focas': 'FOCAS'}[proto] }}</td>
+      <td class="mono">{% if m.ip %}{{ m.ip }}{% else %}USB serial{% endif %}</td>
+      <td>
+        {% if m.ip %}
+          {% if reachable[m.ip] %}<span class="pill ok">reachable</span>{% else %}<span class="pill bad">no reply</span>{% endif %}
+        {% elif adapters[m.name] %}<span class="pill ok">adapter present</span>
+        {% else %}<span class="pill bad">adapter missing</span>{% endif %}
+      </td>
+      <td>
+        {% if proto == 'serial' %}
+          {% set st = serial_status[m.name] %}
+          <span class="pill {{ 'bad' if st.state == 'error' else ('idle' if st.state in ('idle', 'disabled', 'stopped') else 'ok') }}"
+                title="{{ st.detail }}">{{ 'listening' if st.state == 'idle' else st.state }}</span>
+          {% if st.state in ('sending', 'waiting') and st.file %}<div class="muted mono">{{ st.file }}</div>{% endif %}
+        {% elif m.name in connected %}<span class="pill ok">connected</span>
+        {% else %}<span class="pill idle">idle</span>{% endif %}
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5" class="muted">No machines yet. <a href="{{ url_for('web.machine_new') }}">Add one</a>.</td></tr>
+    {% endfor %}
+  </table>
+  <p class="hint">"No reply" can also mean the machine (or serial device server) is switched off.
+    "Connected" means the machine is logged in to its share or FTP folder right now.</p>
+</div>
+
+{% if events %}
+<div class="card">
+  <h2>Recent DNC activity</h2>
+  {% set show_machine = true %}{% include "_events.html" %}
+  <p class="hint"><a href="{{ url_for('web.logs', c='dnc') }}">Full DNC log</a></p>
+</div>
+{% endif %}
+
+<div class="grid">
+  <div class="card">
+    <h2>Services</h2>
+    <table>
+      {% for name, state in containers.items() %}
+      <tr><td class="mono">{{ name }}</td>
+        <td>{% if state == 'running' %}<span class="pill ok">running</span>{% else %}<span class="pill bad">{{ state }}</span>{% endif %}</td></tr>
+      {% endfor %}
+    </table>
+  </div>
+  <div class="card">
+    <h2>Network interfaces</h2>
+    <table>
+      {% for name, role in [(site.office.interface, 'Office'), (site.cnc.interface, 'CNC')] %}
+      {% set i = ifaces.get(name) %}
+      <tr><td>{{ role }} <span class="mono muted">{{ name }}</span></td>
+        <td>{% if i %}<span class="pill {{ 'ok' if i.state == 'UP' else 'bad' }}">{{ i.state | lower }}</span>
+          <div class="mono">{{ i.addresses | join(', ') or 'no address' }}</div>
+          {% else %}<span class="pill bad">not found</span>{% endif %}</td></tr>
+      {% endfor %}
+    </table>
+  </div>
+  <div class="card">
+    <h2>Storage</h2>
+    {% if disk %}
+    <p><strong>{{ '%.1f' | format(disk.free / 1e9) }} GB free</strong> of {{ '%.1f' | format(disk.total / 1e9) }} GB</p>
+    {% else %}<p class="muted">/srv/cnc not found</p>{% endif %}
+  </div>
+</div>
+{% endblock %}

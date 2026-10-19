@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}{{ filename }} · {{ m.label }}{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('web.machine_detail', name=m.name) }}">&larr; {{ m.label }}</a></p>
+<h1 class="mono">{{ filename }}</h1>
+<p class="muted">{{ m.name }}/{{ 'received/' if folder == 'received' }} · {{ '{:,}'.format(size) }} bytes · {{ lines | length }} lines
+  · modified {{ mtime.strftime('%Y-%m-%d %H:%M') }}</p>
+<div class="actions" style="margin-top:0;margin-bottom:12px">
+  {% if can_send %}
+  <form method="post" action="{{ url_for('web.dnc_send', name=m.name) }}" class="inline">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="filename" value="{{ filename }}">
+    <input type="text" name="delay" value="{{ m.serial.send_delay | round(1) }}" style="width:52px" title="Delay before sending (s)"> s
+    <button>Send to {{ m.label }}</button>
+  </form>
+  {% endif %}
+  <a class="btn secondary" href="{{ url_for('web.file_download', name=m.name, folder=folder, file=filename) }}">Download</a>
+</div>
+{% if truncated %}<div class="flash error">This file is large, so only the first 1 MB is shown. Download it to see everything.</div>{% endif %}
+<pre class="log" style="background:#fbfcfd;color:var(--fg);border:1px solid var(--line)">{% for line in lines %}{{ line }}
+{% endfor %}</pre>
+{% endblock %}

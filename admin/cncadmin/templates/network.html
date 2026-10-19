@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Network{% endblock %}
+{% block content %}
+<h1>Network</h1>
+
+<div class="card">
+  <h2>Office network <span class="mono muted">{{ site.office.interface }}</span></h2>
+  <p class="muted">Currently: {{ (ifaces.get(site.office.interface) or {}).get('addresses', []) | join(', ') or 'no address' }}.
+    Your computer: <span class="mono">{{ client_ip }}</span>.</p>
+  <form method="post" action="{{ url_for('web.network_office') }}">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label for="method">Addressing</label>
+    <select id="method" name="method" onchange="document.getElementById('static').style.display = this.value == 'manual' ? '' : 'none'">
+      <option value="auto" {{ 'selected' if site.office.method == 'auto' }}>DHCP (recommended, ask IT for a reservation)</option>
+      <option value="manual" {{ 'selected' if site.office.method == 'manual' }}>Static</option>
+    </select>
+    <div id="static" style="{{ '' if site.office.method == 'manual' else 'display:none' }}">
+      <label for="address">Address / prefix</label>
+      <input type="text" id="address" name="address" value="{{ site.office.address }}" placeholder="e.g. 10.10.10.50/24">
+      <label for="gateway">Gateway</label>
+      <input type="text" id="gateway" name="gateway" value="{{ site.office.gateway }}">
+      <label for="dns">DNS servers</label>
+      <input type="text" id="dns" name="dns" value="{{ site.office.dns | join(' ') }}">
+      <div class="hint">Space separated.</div>
+    </div>
+    <label for="allowed_subnets">Allowed office subnets</label>
+    <textarea id="allowed_subnets" name="allowed_subnets">{{ site.office.allowed_subnets | join('\n') }}</textarea>
+    <div class="hint">Only these subnets can reach the shares and web pages. One per line, e.g. 10.10.0.0/16.</div>
+    <label><input type="checkbox" name="lockout_ok"> Apply even if my computer is outside the allowed subnets</label>
+    <div class="actions"><button>Apply with {{ confirm_seconds // 60 }}-minute rollback</button></div>
+    <p class="hint">After you apply, confirm the change within {{ confirm_seconds // 60 }} minutes (from the new address, if it changed).
+      If you don't, the old settings are restored automatically.</p>
+  </form>
+</div>
+
+<div class="card">
+  <h2>CNC network <span class="mono muted">{{ site.cnc.interface }}</span></h2>
+  <p class="muted">Isolated machine network on the dedicated switch. No gateway. Never routed to the office.</p>
+  <form method="post" action="{{ url_for('web.network_cnc') }}">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label for="cnc_address">Pi address / prefix</label>
+    <input type="text" id="cnc_address" name="address" value="{{ site.cnc.address }}">
+    {% if site.machines %}
+    <label>Machine addresses</label>
+    <table style="max-width:520px">
+      {% for m in site.machines if m.ip %}
+      <tr><td>{{ m.label }}</td><td><input type="text" name="ip_{{ m.name }}" value="{{ m.ip }}"></td></tr>
+      {% endfor %}
+    </table>
+    <div class="hint">To move to a different subnet, change the Pi's address and every machine address together.
+      Then update the settings on each machine.</div>
+    {% endif %}
+    <div class="actions"><button>Save CNC network</button></div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Workgroup</h2>
+  <form method="post" action="{{ url_for('web.network_general') }}">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label for="workgroup">Workgroup / domain name used by the machines</label>
+    <input type="text" id="workgroup" name="workgroup" value="{{ site.workgroup }}" maxlength="15">
+    <div class="actions"><button>Save</button></div>
+  </form>
+</div>
+{% endblock %}

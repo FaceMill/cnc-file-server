@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}CNC File Server{% endblock %} · CNC Admin</title>
+<style>
+  :root { --fg:#1d2329; --muted:#5f6b76; --line:#d9dee3; --bg:#f6f7f9; --card:#fff;
+          --accent:#0b5cad; --ok:#1d7a3a; --bad:#b42318; --warn:#9a6700; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; color:var(--fg); background:var(--bg); }
+  header { background:#16212c; color:#fff; padding:0 20px; display:flex; align-items:center; gap:24px; }
+  header .brand { font-weight:600; padding:14px 0; }
+  header nav a { color:#c9d4de; text-decoration:none; padding:14px 8px; display:inline-block; }
+  header nav a.active, header nav a:hover { color:#fff; box-shadow: inset 0 -3px 0 #4ea1f3; }
+  header form { margin-left:auto; }
+  main { max-width:1100px; margin:24px auto; padding:0 20px; }
+  h1 { font-size:22px; margin:0 0 16px; }
+  h2 { font-size:17px; margin:0 0 12px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:18px; margin-bottom:18px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:18px; }
+  table { width:100%; border-collapse:collapse; }
+  th, td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-size:13px; color:var(--muted); font-weight:600; }
+  .muted { color:var(--muted); }
+  .mono { font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .pill { display:inline-block; padding:1px 8px; border-radius:10px; font-size:13px; }
+  .pill.ok { background:#e3f4e8; color:var(--ok); } .pill.bad { background:#fde8e6; color:var(--bad); }
+  .pill.idle { background:#eef1f4; color:var(--muted); }
+  .flash { padding:10px 14px; border-radius:6px; margin-bottom:12px; }
+  .flash.ok { background:#e3f4e8; color:#14532d; } .flash.error { background:#fde8e6; color:#7a1a12; }
+  .banner { background:#fff4d6; border:1px solid #f0d58a; color:#5c4100; padding:12px 14px; border-radius:6px; margin-bottom:16px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  label { display:block; font-size:13px; font-weight:600; margin:10px 0 4px; }
+  input[type=text], input[type=password], select, textarea { width:100%; max-width:420px; padding:7px 9px; border:1px solid #b9c2cb; border-radius:5px; font:inherit; }
+  textarea { min-height:70px; }
+  .hint { font-size:13px; color:var(--muted); margin-top:3px; }
+  button, .btn { display:inline-block; background:var(--accent); color:#fff; border:0; border-radius:5px; padding:7px 14px; font:inherit; cursor:pointer; text-decoration:none; }
+  button.secondary, .btn.secondary { background:#e7ebef; color:var(--fg); }
+  button.danger { background:var(--bad); }
+  .actions { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:14px; }
+  form.inline { display:inline; }
+  pre.log { background:#0f1720; color:#d6e2ee; padding:14px; border-radius:6px; overflow:auto; max-height:70vh; font-size:12.5px; }
+  @media print { header, .actions, .noprint { display:none !important; } .card { border:0; } }
+</style>
+</head>
+<body>
+{% if session.user %}
+<header>
+  <div class="brand">CNC File Server</div>
+  <nav>
+    {% set ep = request.endpoint or '' %}
+    <a href="{{ url_for('web.dashboard') }}" class="{{ 'active' if ep == 'web.dashboard' }}">Status</a>
+    <a href="{{ url_for('web.machines') }}" class="{{ 'active' if ep.startswith('web.machine') }}">Machines</a>
+    <a href="{{ url_for('web.users') }}" class="{{ 'active' if ep.startswith('web.user') }}">Office users</a>
+    <a href="{{ url_for('web.network') }}" class="{{ 'active' if ep.startswith('web.network') }}">Network</a>
+    <a href="{{ url_for('web.logs') }}" class="{{ 'active' if ep == 'web.logs' }}">Logs</a>
+    <a href="{{ url_for('web.account') }}" class="{{ 'active' if ep == 'web.account' }}">Account</a>
+  </nav>
+  <form method="post" action="{{ url_for('web.logout') }}">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button class="secondary">Log out</button>
+  </form>
+</header>
+{% endif %}
+<main>
+  {% if session.user and pending %}
+  <div class="banner">
+    <strong>Office network change pending.</strong>
+    {% if pending.applying %}<span>Applying the new settings&hellip; reload this page in a few seconds.</span>
+    {% else %}<span>Reverts automatically in {{ pending.seconds_left }} s unless confirmed.</span>{% endif %}
+    <form class="inline" method="post" action="{{ url_for('web.network_confirm') }}">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><button>Confirm</button></form>
+    <form class="inline" method="post" action="{{ url_for('web.network_revert') }}">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><button class="secondary">Revert now</button></form>
+  </div>
+  {% elif session.user and pending_error %}
+  <div class="flash {{ 'error' if 'FAILED' in pending_error or 'failed' in pending_error else 'ok' }}">Last office network change: {{ pending_error }}</div>
+  {% endif %}
+  {% for cat, msg in get_flashed_messages(with_categories=true) %}
+  <div class="flash {{ cat }}">{{ msg }}</div>
+  {% endfor %}
+  {% block content %}{% endblock %}
+</main>
+</body>
+</html>

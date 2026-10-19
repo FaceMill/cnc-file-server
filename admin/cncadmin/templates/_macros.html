@@ -1,0 +1,18 @@
+{# Imported "with context" so csrf is available. #}
+{% macro delete_button(m, folder, file) -%}
+<form method="post" action="{{ url_for('web.file_delete', name=m.name) }}" class="inline"
+      data-msg="Move {{ file }} to the recycle folder?" onsubmit="return confirm(this.dataset.msg)">
+  <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="folder" value="{{ folder }}">
+  <input type="hidden" name="file" value="{{ file }}"><button class="secondary" title="Move to the recycle folder">Delete</button>
+</form>
+{%- endmacro %}
+
+{% macro upload_form(m) -%}
+<form method="post" enctype="multipart/form-data" action="{{ url_for('web.file_upload', name=m.name) }}"
+      class="actions noprint" style="margin-top:0;margin-bottom:10px">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <input type="file" name="file" required>
+  <label style="display:inline;font-weight:400;font-size:13px;margin:0"><input type="checkbox" name="overwrite"> replace if it exists</label>
+  <button class="secondary">Upload</button>
+</form>
+{%- endmacro %}

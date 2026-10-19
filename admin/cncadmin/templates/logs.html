@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Logs{% endblock %}
+{% block content %}
+<h1>Logs</h1>
+<div class="actions" style="margin-top:0;margin-bottom:12px">
+  <a class="btn {{ '' if name == 'dnc' else 'secondary' }}" href="{{ url_for('web.logs', c='dnc') }}">DNC activity</a>
+  {% for s in services %}
+  <a class="btn {{ '' if s == name else 'secondary' }}" href="{{ url_for('web.logs', c=s) }}">{{ s }}</a>
+  {% endfor %}
+</div>
+{% if name == 'dnc' %}
+<div class="card">{% set show_machine = true %}{% include "_events.html" %}</div>
+<p class="hint">Serial DNC requests, sends, receives and port errors (newest 1000).</p>
+{% else %}
+<pre class="log">{{ text }}</pre>
+<p class="hint">Last 300 lines. Failed CNC logins show up in <span class="mono">samba-cnc</span> and <span class="mono">ftp-cnc</span>.</p>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,403 @@
+{% extends "base.html" %}
+{% block title %}{{ m.label }}{% endblock %}
+{% block content %}
+{% from "_macros.html" import delete_button, upload_form with context %}
+{% set t = m.type %}
+{% set s = m.serial if proto == 'serial' else {} %}
+<h1>{{ m.label }} <span class="muted" style="font-weight:400">· {{ machine_types[t].label }}</span></h1>
+
+{% if proto == 'serial' %}
+<div class="card noprint">
+  <h2>DNC status</h2>
+  <div id="dnc-status" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <span class="pill" id="dnc-badge"></span>
+    <span id="dnc-detail"></span>
+    <progress id="dnc-progress" max="1" value="0" hidden style="width:220px"></progress>
+    <span id="dnc-countdown" class="muted"></span>
+  </div>
+  <p class="hint">{% if s.transport == 'usb' %}{{ s.device or 'no port set' }}{% else %}socket://{{ m.ip }}:{{ s.tcp_port }}{% endif %}
+    · {{ s.baud }} baud {{ s.data_bits }}{{ s.parity }}{{ s.stop_bits }} · flow {{ s.flow }} · send delay {{ s.send_delay | round(1) }} s
+    · programs: <span class="mono">{{ m.name }}/</span> · received: <span class="mono">{{ m.name }}/received/</span></p>
+  <div class="actions" style="margin-top:0">
+    <form method="post" action="{{ url_for('web.dnc_cancel', name=m.name) }}" class="inline">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><button class="danger">Cancel send</button></form>
+    <form method="post" action="{{ url_for('web.dnc_restart', name=m.name) }}" class="inline">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><button class="secondary">Restart port</button></form>
+  </div>
+  <p class="hint">The machine requests a program by punching a small program containing <span class="mono">(SEND O1234)</span>
+    (a file name, a name without extension, or a program number). After the send delay, the Pi streams the file.
+    Anything else the machine punches is saved to <span class="mono">received/</span>. To abort, reset the control and call again,
+    or press Cancel send.</p>
+</div>
+
+<div class="card">
+  <h2>Programs <span class="muted" style="font-weight:400">({{ m.name }}/)</span></h2>
+  {{ upload_form(m) }}
+  <input type="text" placeholder="Filter files..." class="noprint" oninput="filterTable(this, 'programs')" style="margin-bottom:8px">
+  <table id="programs">
+    <tr><th>File</th><th>Size</th><th>Modified</th><th></th></tr>
+    {% for f in programs %}
+    <tr>
+      <td class="mono"><a href="{{ url_for('web.file_view', name=m.name, folder='programs', file=f.name) }}">{{ f.name }}</a></td>
+      <td>{{ '{:,}'.format(f.size) }} B</td>
+      <td>{{ f.mtime | int | timestamp }}</td>
+      <td style="text-align:right;white-space:nowrap">
+        {% if running %}
+        <form method="post" action="{{ url_for('web.dnc_send', name=m.name) }}" class="inline">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <input type="hidden" name="filename" value="{{ f.name }}">
+          <input type="text" name="delay" value="{{ s.send_delay | round(1) }}" style="width:52px" title="Delay before sending (s)"> s
+          <button class="secondary">Send</button>
+        </form>
+        {% endif %}
+        {{ delete_button(m, 'programs', f.name) }}
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="4" class="muted">No programs yet. Office users can drop them into <span class="mono">\\&lt;pi&gt;\CNC\{{ m.name }}</span>.</td></tr>
+    {% endfor %}
+  </table>
+  {% if not running %}<p class="hint">The port is disabled, so sending is off. Enable it in the machine's settings.</p>{% endif %}
+</div>
+
+<div class="card">
+  <h2>Received <span class="muted" style="font-weight:400">({{ m.name }}/received/, newest 50)</span></h2>
+  <table>
+    <tr><th>File</th><th>Size</th><th>Received</th><th></th></tr>
+    {% for f in received %}
+    <tr><td class="mono"><a href="{{ url_for('web.file_view', name=m.name, folder='received', file=f.name) }}">{{ f.name }}</a></td>
+      <td>{{ '{:,}'.format(f.size) }} B</td><td>{{ f.mtime | int | timestamp }}</td>
+      <td style="text-align:right">{{ delete_button(m, 'received', f.name) }}</td></tr>
+    {% else %}
+    <tr><td colspan="3" class="muted">Nothing received yet</td></tr>
+    {% endfor %}
+  </table>
+</div>
+
+<div class="card">
+  <h2>Activity</h2>
+  {% include "_events.html" %}
+</div>
+{% elif proto == 'focas' %}
+<div class="card noprint">
+  <h2>CNC <span class="muted" style="font-weight:400">({{ m.ip }}:{{ m.focas.port }}, FOCAS)</span></h2>
+  <div id="cnc-status" class="muted">Connecting to the CNC...</div>
+  <div class="actions"><button class="secondary" onclick="loadCnc()">Refresh</button></div>
+</div>
+
+<div class="card noprint">
+  <h2>Programs in CNC memory</h2>
+  <table id="cnc-programs">
+    <tr><th>Program</th><th>Comment</th><th>Size</th><th>Modified</th><th></th></tr>
+    <tr><td colspan="5" class="muted">Loading...</td></tr>
+  </table>
+  <p class="hint">Read saves a copy to <span class="mono">{{ m.name }}/received/</span>. Delete removes the program from the CNC
+    (refused while it's the active program).</p>
+</div>
+
+<div class="card">
+  <h2>Programs on the Pi <span class="muted" style="font-weight:400">({{ m.name }}/)</span></h2>
+  {{ upload_form(m) }}
+  <table>
+    <tr><th>File</th><th>Size</th><th>Modified</th><th></th></tr>
+    {% for f in programs %}
+    <tr>
+      <td class="mono"><a href="{{ url_for('web.file_view', name=m.name, folder='programs', file=f.name) }}">{{ f.name }}</a></td>
+      <td>{{ '{:,}'.format(f.size) }} B</td>
+      <td>{{ f.mtime | int | timestamp }}</td>
+      <td style="text-align:right;white-space:nowrap">
+        <form method="post" action="{{ url_for('web.focas_send', name=m.name) }}" class="inline">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <input type="hidden" name="filename" value="{{ f.name }}">
+          <label style="display:inline;font-weight:400;font-size:13px"><input type="checkbox" name="replace" {{ 'checked' if m.focas.replace }}> replace</label>
+          <button class="secondary">Send to CNC</button>
+        </form>
+        {{ delete_button(m, 'programs', f.name) }}
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="4" class="muted">No programs yet. Office users can drop them into <span class="mono">\\&lt;pi&gt;\CNC\{{ m.name }}</span>.</td></tr>
+    {% endfor %}
+  </table>
+  <p class="hint">Programs must start with an O-number (O1–O9999). Line endings are converted for the CNC.
+    Without "replace", sending a program number that already exists on the CNC is refused.</p>
+</div>
+
+<div class="card">
+  <h2>Read from CNC <span class="muted" style="font-weight:400">({{ m.name }}/received/, newest 50)</span></h2>
+  <table>
+    <tr><th>File</th><th>Size</th><th>Saved</th><th></th></tr>
+    {% for f in received %}
+    <tr><td class="mono"><a href="{{ url_for('web.file_view', name=m.name, folder='received', file=f.name) }}">{{ f.name }}</a></td>
+      <td>{{ '{:,}'.format(f.size) }} B</td><td>{{ f.mtime | int | timestamp }}</td>
+      <td style="text-align:right">{{ delete_button(m, 'received', f.name) }}</td></tr>
+    {% else %}
+    <tr><td colspan="3" class="muted">Nothing read yet</td></tr>
+    {% endfor %}
+  </table>
+</div>
+
+<div class="card">
+  <h2>Activity</h2>
+  {% include "_events.html" %}
+</div>
+
+<script>
+function loadCnc() {
+  const box = document.getElementById("cnc-status"), table = document.getElementById("cnc-programs");
+  box.textContent = "Connecting to the CNC...";
+  fetch("{{ url_for('web.focas_status', name=m.name) }}").then(r => r.json()).then(d => {
+    while (table.rows.length > 1) table.deleteRow(1);
+    if (d.error) {
+      box.innerHTML = '<span class="pill bad">not connected</span> ';
+      box.append(d.error);
+      const row = table.insertRow(); const c = row.insertCell(); c.colSpan = 5; c.className = "muted"; c.textContent = "Not available";
+      return;
+    }
+    const st = d.status;
+    box.innerHTML = "";
+    const pill = (text, cls) => { const p = document.createElement("span"); p.className = "pill " + cls; p.textContent = text; box.append(p, " "); };
+    pill("connected", "ok");
+    pill("mode " + st.mode, "idle");
+    pill(st.run, st.run === "START" ? "ok" : "idle");
+    if (st.alarm) pill("ALARM", "bad");
+    if (st.emergency) pill(st.emergency, "bad");
+    if (st.running && st.running.number) box.append("Active program: O" + st.running.number + (st.running.name ? " (" + st.running.name + ")" : ""));
+    if (!d.programs.length) {
+      const row = table.insertRow(); const c = row.insertCell(); c.colSpan = 5; c.className = "muted"; c.textContent = "No programs in CNC memory";
+    }
+    d.programs.forEach(p => {
+      const row = table.insertRow();
+      row.insertCell().textContent = "O" + String(p.number).padStart(4, "0");
+      row.cells[0].className = "mono";
+      row.insertCell().textContent = p.comment;
+      row.insertCell().textContent = p.length.toLocaleString() + " B";
+      row.insertCell().textContent = p.modified;
+      const act = row.insertCell(); act.style.textAlign = "right"; act.style.whiteSpace = "nowrap";
+      act.append(form("{{ url_for('web.focas_read', name=m.name) }}", p.number, "Read", "secondary"), " ",
+                 form("{{ url_for('web.focas_delete', name=m.name) }}", p.number, "Delete", "danger",
+                      "Delete O" + p.number + " from the CNC's memory?"));
+    });
+  }).catch(() => { box.textContent = "Could not reach the admin server."; });
+}
+function form(action, number, label, cls, confirmText) {
+  const f = document.createElement("form");
+  f.method = "post"; f.action = action; f.className = "inline";
+  if (confirmText) f.onsubmit = () => confirm(confirmText);
+  for (const [k, v] of [["csrf", "{{ csrf }}"], ["number", number]]) {
+    const i = document.createElement("input"); i.type = "hidden"; i.name = k; i.value = v; f.append(i);
+  }
+  const b = document.createElement("button"); b.className = cls; b.textContent = label; f.append(b);
+  return f;
+}
+loadCnc();
+</script>
+{% else %}
+<div class="card">
+  <h2>Files in this machine's folder</h2>
+  {{ upload_form(m) }}
+  <table>
+    <tr><th>Name</th><th>Size</th><th>Modified</th><th></th></tr>
+    {% for f in files %}
+    <tr>
+      <td class="mono"><a href="{{ url_for('web.file_view', name=m.name, folder='programs', file=f.name) }}">{{ f.name }}</a></td>
+      <td>{{ '{:,}'.format(f.size) }} B</td>
+      <td>{{ f.mtime.strftime('%Y-%m-%d %H:%M') }}</td>
+      <td style="text-align:right">{{ delete_button(m, 'programs', f.name) }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="3" class="muted">No files yet. Office users can drop programs into
+      <span class="mono">\\&lt;pi&gt;\CNC\{{ m.name }}</span>.</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>Settings for the machine</h2>
+  <table>
+    {% if proto in ('smb', 'ftp', 'focas') %}
+    <tr><th>Machine IP address</th><td class="mono">{{ m.ip }}</td></tr>
+    <tr><th>Subnet mask</th><td class="mono">{{ netmask }}</td></tr>
+    <tr><th>Default gateway / router</th><td class="mono">(blank / 0.0.0.0)</td></tr>
+    <tr><th>Server (Pi) address</th><td class="mono">{{ server_ip }}</td></tr>
+    {% endif %}
+    {% if proto == 'smb' %}
+    <tr><th>Share name</th><td class="mono">{{ m.name }}</td></tr>
+    <tr><th>Full path</th><td class="mono">\\{{ server_ip }}\{{ m.name }}</td></tr>
+    <tr><th>User name</th><td class="mono">{{ m.name }}</td></tr>
+    <tr><th>Password</th><td class="mono">{{ m.password }}</td></tr>
+    <tr><th>Domain / workgroup</th><td class="mono">{{ site.workgroup }}</td></tr>
+    {% elif proto == 'focas' %}
+    <tr><th>FOCAS2 / Ethernet port</th><td class="mono">{{ m.focas.port }}</td></tr>
+    <tr><th>Login</th><td>None. The Pi connects to the CNC.</td></tr>
+    {% elif proto == 'ftp' %}
+    <tr><th>FTP port</th><td class="mono">21</td></tr>
+    <tr><th>User name</th><td class="mono">{{ m.name }}</td></tr>
+    <tr><th>Password</th><td class="mono">{{ m.password }}</td></tr>
+    <tr><th>Login / working folder</th><td class="mono">/ (blank)</td></tr>
+    <tr><th>Mode</th><td>Passive or active both work</td></tr>
+    {% else %}
+    <tr><th>Connection</th><td>{% if s.transport == 'usb' %}USB adapter <span class="mono">{{ s.device }}</span>
+      {% else %}Device server <span class="mono">{{ m.ip }}:{{ s.tcp_port }}</span>{% endif %}</td></tr>
+    <tr><th>Baud rate</th><td class="mono">{{ s.baud }}</td></tr>
+    <tr><th>Data bits / parity / stop bits</th><td class="mono">{{ s.data_bits }} / {{ {'E': 'Even', 'N': 'None', 'O': 'Odd', 'M': 'Mark', 'S': 'Space'}[s.parity] }} / {{ s.stop_bits }}</td></tr>
+    <tr><th>Flow control</th><td class="mono">{{ {'xonxoff': 'XON/XOFF (software)', 'rtscts': 'RTS/CTS (hardware)', 'dsrdtr': 'DSR/DTR (hardware)', 'none': 'None'}[s.flow] }}</td></tr>
+    <tr><th>Flow / timing</th><td>Send delay {{ s.send_delay | round(1) }} s, pause timeout {{ s.pause_timeout | round(0) | int }} min. Files are sent byte for byte, unmodified.</td></tr>
+    {% endif %}
+  </table>
+</div>
+
+<div class="card">
+  <h2>How to connect: {{ machine_types[t].label }}</h2>
+  {% if t == 'haas-classic' %}
+  <p>On the SETNG page, Network settings (around settings 900–916; check your machine's manual for the exact numbers):</p>
+  <ol>
+    <li>CNC Network Name: a short unique name, e.g. <span class="mono">{{ m.name | upper }}</span></li>
+    <li>Obtain Address Automatically: <strong>OFF</strong>; IP, subnet mask and gateway as above</li>
+    <li>Domain/Workgroup <span class="mono">{{ site.workgroup }}</span></li>
+    <li>Remote Server Name <span class="mono">{{ server_ip }}</span>, Remote Share Path <span class="mono">{{ m.name }}</span></li>
+    <li>User Name and Password as above</li>
+    <li>Power-cycle the control. The share appears as the network device in List Program.</li>
+  </ol>
+  {% elif t == 'haas-ngc' %}
+  <ol>
+    <li>Press SETTING, then go to the <strong>Network</strong> tab. Under <strong>Wired Connection</strong>: DHCP Off; IP, subnet mask and gateway as above. Apply.</li>
+    <li>On the <strong>Net Share</strong> tab: Remote Net Share Enabled On; Remote Server Name <span class="mono">{{ server_ip }}</span>;
+      Remote Share Path <span class="mono">{{ m.name }}</span>; Remote User Name and Password as above; Domain <span class="mono">{{ site.workgroup }}</span>. Apply.</li>
+    <li>In Device Manager (LIST PROGRAM), the <strong>Net Share</strong> tab shows the folder.</li>
+  </ol>
+  {% elif t == 'siemens-840d-pcu50' %}
+  <p>On the PCU 50 (Windows XP and HMI Advanced). Windows access usually needs the service/OEM login.</p>
+  <ol>
+    <li>Exit to Windows. In Network Connections, open the <strong>company network</strong> adapter (usually <em>Eth 1</em>).
+      <strong>Do not change the system network adapter</strong> (Eth 2, 192.168.214.x), which connects to the NCU and machine control panel.</li>
+    <li>Set the IP and mask as above, with no gateway and no DNS.</li>
+    <li>Map a network drive (e.g. <span class="mono">N:</span>) to <span class="mono">\\{{ server_ip }}\{{ m.name }}</span>
+      with "Reconnect at logon", connecting as user <span class="mono">{{ m.name }}</span>.</li>
+    <li>Make the drive available in HMI Advanced (Services area / logical drive setup in your HMI version) and restart the HMI.</li>
+  </ol>
+  {% elif t == 'siemens-operate' %}
+  <ol>
+    <li>Commissioning area: Network → Company network (X130): IP and mask as above, no gateway.</li>
+    <li>Commissioning → HMI → <strong>Logical drives</strong>: add a drive of type <em>USB/network: Windows network</em>,
+      path <span class="mono">//{{ server_ip }}/{{ m.name }}</span>, user <span class="mono">{{ m.name }}</span> and the password above.
+      Choose the access level and soft-key text you want.</li>
+    <li>Save and restart HMI Operate. The drive appears in Program Manager.</li>
+  </ol>
+  {% elif t == 'heidenhain-tnc' %}
+  <ol>
+    <li>Program Management → <strong>Net</strong> (enter the code number for network settings if asked). Set the X26 interface IP and mask as above, no gateway.</li>
+    <li>Define a network connection: Mount device <em>SMB</em> (Windows share), server <span class="mono">{{ server_ip }}</span>,
+      share <span class="mono">{{ m.name }}</span>, user <span class="mono">{{ m.name }}</span> plus the password, Workgroup <span class="mono">{{ site.workgroup }}</span>, Auto mount on.</li>
+    <li>The drive appears in Program Management. Older iTNC 530 controls use SMB1, newer TNC 640/620 use SMB2/3; both work.</li>
+  </ol>
+  {% elif t == 'windows-cnc' %}
+  <ol>
+    <li>Exit to Windows (usually needs the maintenance/OEM login). Set the network adapter that faces the shop network:
+      IP and mask as above, no gateway. Don't change adapters that connect internal machine components.</li>
+    <li>Map a network drive to <span class="mono">\\{{ server_ip }}\{{ m.name }}</span> with "Reconnect at logon",
+      user <span class="mono">{{ m.name }}</span> and the password above.</li>
+    <li>Select the mapped drive in the control's program/file manager (Mazak: Data I/O; Okuma: File manager; Hurco: Program Manager).</li>
+  </ol>
+  {% elif t in ('fanuc-dataserver', 'fanuc-embedded') %}
+  {% set port_key = 'ETHBRD / Data Server board' if t == 'fanuc-dataserver' else 'EMBED (embedded Ethernet)' %}
+  <ol>
+    <li>SYSTEM → <strong>[+]</strong> → <strong>[ETHPRM]</strong> (or [EMBED]/[ETHBRD]), interface <strong>{{ port_key }}</strong>, COMMON screen:
+      IP address and subnet mask as above, router blank.</li>
+    <li>FTP TRANSFER (host) screen, connection 1: Host name <span class="mono">{{ server_ip }}</span>, Port 21,
+      User <span class="mono">{{ m.name }}</span>, Password as above, Login folder blank.</li>
+    {% if t == 'fanuc-dataserver' %}
+    <li>Data Server settings: set the data server mode to <strong>FTP</strong> mode, so the Data Server works directly on the Pi's folder.</li>
+    <li>Parameter 20 (I/O channel) = <strong>5</strong> (Data Server) for input/output, or select the Data Server device in the program directory.</li>
+    <li>For DNC operation of large programs, select the data server as the DNC device and run directly from the Pi's folder.</li>
+    {% else %}
+    <li>Parameter 20 (I/O channel) = <strong>9</strong> (embedded Ethernet).</li>
+    <li>In EDIT mode, program directory → <strong>[DEVICE]</strong> → <strong>[EMBED]</strong> (host) lists the Pi's folder. Read and punch programs from there.</li>
+    {% endif %}
+    <li>Power-cycle if the control asks. Screen and parameter names vary by series (0i-D/F, 30i/31i/32i); check the FANUC Ethernet manual.</li>
+  </ol>
+  {% elif t == 'fanuc-focas' %}
+  <ol>
+    <li>SYSTEM → <strong>[+]</strong> → <strong>[ETHPRM]</strong> (or [EMBED]), embedded Ethernet port, COMMON screen:
+      IP address <span class="mono">{{ m.ip }}</span>, subnet mask <span class="mono">{{ netmask }}</span>, router blank.</li>
+    <li><strong>FOCAS2</strong> screen: TCP port <span class="mono">{{ m.focas.port }}</span>. Leave UDP and the time interval at 0.</li>
+    <li>Power-cycle the CNC if it asks. FOCAS2 over embedded Ethernet is standard on 0i-D/F and 30i/31i/32i.
+      Older 16i/18i/21i need the Ethernet board or option.</li>
+    <li>To write programs, turn the program-protect (memory protect) key off. Programs O8000–O9999 may also be
+      protected by parameter 3202 (NE8/NE9).</li>
+    <li>Writing or deleting the program the CNC is running is refused. Reset the CNC first.</li>
+  </ol>
+  {% elif t == 'ftp-other' %}
+  <ol>
+    <li>Set the control's Ethernet IP and mask as above, with no gateway.</li>
+    <li>In the control's host/FTP settings (e.g. Mitsubishi M70/M80 "Host" parameters, Brother "FTP" settings): host <span class="mono">{{ server_ip }}</span>,
+      port 21, user <span class="mono">{{ m.name }}</span>, password as above, directory <span class="mono">/</span>.</li>
+    <li>If the control asks for a host type or list format, choose UNIX (or Automatic).</li>
+  </ol>
+  {% elif t in ('fanuc-rs232', 'serial-other') %}
+  <ol>
+    <li><strong>Cable:</strong> a null modem. For XON/XOFF (Fanuc, Haas), wire TXD↔RXD and GND
+      (adapter DB9 3→2, 2→3, 5→7 at a CNC DB25). Jumper RTS–CTS, and DTR–DSR–DCD, at <em>both</em> ends.
+      Without the CNC-side jumpers, a Fanuc stops with alarm 086 (DR signal off). See <span class="mono">docs/SERIAL-PORTS.md</span> for RTS/CTS wiring.</li>
+    {% if t == 'fanuc-rs232' %}
+    <li><strong>Fanuc (0i/16i/18i/21i/30i):</strong> parameter 0020 = I/O channel (0). For channel 0:
+      0101 bit 0 = 1 (2 stop bits), 0102 = 0 (RS-232 with DC1–DC4 codes), 0103 = baud (10 = 4800, 11 = 9600, 12 = 19200).
+      ISO code, even parity, 7 data bits, XON/XOFF. Drip-feed runs in REMOTE (RMT/TAPE) mode.</li>
+    {% else %}
+    <li><strong>Haas:</strong> settings 11 (baud), 12 (parity), 13 (stop bits), 14 (synchronization = XON/XOFF), 37 (data bits);
+      55 (Enable DNC from MDI) = ON. Punch the request from LIST PROG → Send RS-232. Enter DNC by pressing MDI/DNC twice, then Cycle Start.
+      Other controls: set the RS-232 port to match the line settings above.</li>
+    {% endif %}
+    <li><strong>Call a program from the machine:</strong> make a small program with the request comment and punch it out:
+      <pre class="mono" style="margin:6px 0">%
+O9999 (SEND O1234)
+M30
+%</pre>
+      <span class="mono">SEND</span> accepts an exact file name, a name without extension, or a program number. Within the send delay
+      ({{ s.send_delay | round(1) }} s), switch the control to DNC/Remote/Tape mode and press Cycle Start. The Pi streams the file as the machine runs it.</li>
+    <li><strong>Save a program to the Pi:</strong> just punch it out. It lands in <span class="mono">{{ m.name }}/received/</span>
+      as <span class="mono">O&lt;number&gt;_&lt;date-time&gt;.nc</span>.</li>
+    <li><strong>Abort:</strong> reset the control and punch the call program again (the old send is dropped), or press Cancel send above.</li>
+  </ol>
+  {% endif %}
+  <p class="hint">Keep file names short (8.3 style such as <span class="mono">O01234.NC</span> or <span class="mono">PART1.MPF</span>) for older controls.</p>
+</div>
+
+<div class="actions noprint">
+  <a class="btn" href="{{ url_for('web.machine_edit', name=m.name) }}">Edit</a>
+  <button class="secondary" onclick="window.print()">Print setup sheet</button>
+  <a class="btn secondary" href="{{ url_for('web.machines') }}">Back</a>
+</div>
+
+{% if proto == 'serial' %}
+<script>
+function filterTable(input, id) {
+  const q = input.value.toLowerCase();
+  document.getElementById(id).querySelectorAll("tr").forEach((tr, i) => {
+    if (i) tr.hidden = q && !tr.cells[0].textContent.toLowerCase().includes(q);
+  });
+}
+(function () {
+  const badge = document.getElementById("dnc-badge"), detail = document.getElementById("dnc-detail"),
+        prog = document.getElementById("dnc-progress"), cd = document.getElementById("dnc-countdown");
+  const cls = {idle: "ok", sending: "ok", waiting: "ok", receiving: "ok", error: "bad", disabled: "idle", stopped: "idle", starting: "idle"};
+  let last = null;
+  function show(st) {
+    badge.textContent = st.state;
+    badge.className = "pill " + (cls[st.state] || "idle");
+    detail.textContent = st.detail || "";
+    prog.hidden = !(st.state === "sending" && st.total);
+    prog.max = st.total || 1; prog.value = st.sent || 0;
+    cd.textContent = st.state === "waiting" ? `sending in ${st.countdown} s`
+      : st.state === "sending" && st.total ? `${Math.round(100 * st.sent / st.total)}%` : "";
+    // Reload when a transfer finishes so the received list and activity log update.
+    if (["sending", "receiving"].includes(last) && st.state === "idle") setTimeout(() => location.reload(), 800);
+    last = st.state;
+  }
+  show({{ dnc_status | tojson }});
+  setInterval(() => fetch("{{ url_for('web.dnc_status', name=m.name) }}").then(r => r.json()).then(show).catch(() => {}), 1000);
+})();
+</script>
+{% endif %}
+{% endblock %}

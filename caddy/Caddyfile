@@ -1,0 +1,22 @@
+{
+	# No admin API: everything on the Pi shares the host network, so localhost:2019
+	# would let any compromised container reconfigure Caddy.
+	admin off
+	# Browsers send no SNI when you browse to the Pi by IP; serve the hostname's
+	# certificate anyway (expect a name-mismatch warning in that case).
+	default_sni {$OFFICE_HOSTNAME}
+}
+
+# CNC admin. The second address answers requests by IP (e.g. right after an office
+# IP change, before DNS follows), which carry no matching Host name.
+https://{$OFFICE_HOSTNAME}:8443, https://:8443 {
+	# Self-signed internal CA; swap for a certificate from your organisation's CA if available.
+	tls internal
+	reverse_proxy 127.0.0.1:8090
+}
+
+# Plain https://<pi>/ goes to the admin page.
+https://{$OFFICE_HOSTNAME}, https://:443 {
+	tls internal
+	redir https://{host}:8443{uri}
+}

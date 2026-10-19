@@ -1,0 +1,12 @@
+<table>
+  <tr><th>Time</th>{% if show_machine %}<th>Machine</th>{% endif %}<th>Message</th></tr>
+  {% for e in events %}
+  <tr{% if e.level == 'error' %} style="color:var(--bad)"{% endif %}>
+    <td style="white-space:nowrap">{{ e.ts }}</td>
+    {% if show_machine %}<td>{{ e.machine_name or "" }}</td>{% endif %}
+    <td>{{ e.message }}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="3" class="muted">No events yet</td></tr>
+  {% endfor %}
+</table>

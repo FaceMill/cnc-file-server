@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Add machine' if new else 'Edit ' ~ m.label }}{% endblock %}
+{% block content %}
+<h1>{{ 'Add machine' if new else 'Edit ' ~ m.label }}</h1>
+<div class="card">
+  <form method="post" id="machine-form">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label for="name">Machine ID (folder / login name)</label>
+    {% if new %}
+    <input type="text" id="name" name="name" value="{{ m.name }}" maxlength="12" required pattern="[a-z][a-z0-9]{0,11}">
+    <div class="hint">1–12 lowercase letters and digits, e.g. <span class="mono">haas3</span> or <span class="mono">fanuc1</span>. Can't be changed later.</div>
+    {% else %}
+    <div class="mono">{{ m.name }}</div>
+    {% endif %}
+
+    <label for="label">Display name</label>
+    <input type="text" id="label" name="label" value="{{ m.label }}" placeholder="e.g. Haas VF-2 (bay 3)">
+
+    <label for="type">Control type</label>
+    <select id="type" name="type">
+      {% for proto, proto_desc in protocols.items() %}
+      <optgroup label="{{ proto_desc }}">
+        {% for key, t in machine_types.items() if t.protocol == proto %}
+        <option value="{{ key }}" data-protocol="{{ proto }}" {{ 'selected' if key == m.type }}>{{ t.label }}</option>
+        {% endfor %}
+      </optgroup>
+      {% endfor %}
+    </select>
+    <div class="hint" id="protocol-hint"></div>
+
+    <div data-show="serial">
+      <label for="serial_transport">Serial connection</label>
+      <select id="serial_transport" name="serial_transport">
+        <option value="usb" {{ 'selected' if serial.transport == 'usb' }}>USB-to-RS-232 adapter plugged into the Pi</option>
+        <option value="tcp" {{ 'selected' if serial.transport == 'tcp' }}>Serial device server on the CNC network (e.g. Moxa NPort, raw TCP)</option>
+      </select>
+
+      <div data-show-transport="usb">
+        <label for="serial_device">Serial port</label>
+        <input type="text" id="serial_device" name="serial_device" value="{{ serial.device }}" list="ports"
+               placeholder="/dev/serial/by-id/...">
+        <datalist id="ports">{% for p in ports %}<option value="{{ p }}">{% endfor %}</datalist>
+        <div class="hint">{{ ports | length }} port(s) detected. Prefer <span class="mono">/dev/serial/by-id/...</span>
+          (or a <span class="mono">/dev/cnc-*</span> udev name) so the port stays the same after a reboot or replug.
+          FTDI-chip adapters are the most reliable for DNC.</div>
+      </div>
+      <label><input type="checkbox" name="serial_enabled" {{ 'checked' if serial.enabled }}> Enabled (listen on the port)</label>
+    </div>
+
+    <div data-show="smb ftp focas serial-tcp">
+      <label for="ip" id="ip-label">IP address on the CNC network</label>
+      <input type="text" id="ip" name="ip" value="{{ m.ip }}">
+      <div class="hint">Must be inside {{ site.cnc.address }} (the Pi's CNC-side address).</div>
+    </div>
+
+    <div data-show="serial-tcp">
+      <label for="serial_tcp_port">Device server TCP port</label>
+      <input type="text" id="serial_tcp_port" name="serial_tcp_port" value="{{ serial.tcp_port }}" style="max-width:120px">
+      <div class="hint">Set the device server's port to "TCP Server" (raw) mode, and set its serial settings to match those below.</div>
+    </div>
+
+    <div data-show="serial">
+      <label>Line settings (must match the control)</label>
+      <div class="actions" style="margin-top:0">
+        {% for key, label in [('baud', 'Baud'), ('data_bits', 'Data bits'), ('parity', 'Parity'), ('stop_bits', 'Stop bits'), ('flow', 'Flow control')] %}
+        <div>
+          <div class="hint">{{ label }}</div>
+          <select name="serial_{{ key }}" style="width:auto">
+            {% for v in serial_choices[key] %}
+            <option value="{{ v }}" {{ 'selected' if v == serial[key] }}>{{ {'E': 'Even', 'N': 'None', 'O': 'Odd', 'M': 'Mark', 'S': 'Space', 'xonxoff': 'XON/XOFF (software)', 'rtscts': 'RTS/CTS (hardware)', 'dsrdtr': 'DSR/DTR (hardware)', 'none': 'None'}.get(v, v) }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="hint">Typical FANUC: 4800 or 9600 baud, 7 data bits, even parity, 2 stop bits, XON/XOFF, ISO code.</div>
+
+      <label>Timing</label>
+      <div class="actions" style="margin-top:0">
+        {% for key, label, step, hint in [
+             ('send_delay', 'Send delay (s)', '0.5', 'After a (SEND ...) request, before sending: time to switch the control to DNC/Remote and press Cycle Start'),
+             ('line_delay_ms', 'Line delay (ms)', '1', 'Pause after every line. Leave at 0 unless the machine overruns'),
+             ('receive_timeout', 'Receive timeout (s)', '0.5', 'Silence that ends a punch without a closing %'),
+             ('pause_timeout', 'Pause timeout (min)', '1', 'Abort a send paused by XOFF/CTS this long (0 = wait forever). A long M00 stop counts too')] %}
+        <div title="{{ hint }}">
+          <div class="hint">{{ label }}</div>
+          <input type="text" name="serial_{{ key }}" value="{{ serial[key] }}" style="max-width:110px">
+        </div>
+        {% endfor %}
+      </div>
+      <div class="hint">Hover a field for what it does.</div>
+
+      <label for="serial_excluded_ext">Skip file types</label>
+      <input type="text" id="serial_excluded_ext" name="serial_excluded_ext" value="{{ serial.excluded_ext }}" placeholder="e.g. bak, txt">
+      <div class="hint">Files with these extensions are hidden, can't be requested and are never sent.</div>
+    </div>
+
+    <div data-show="focas">
+      <label>FOCAS connection</label>
+      <div class="actions" style="margin-top:0">
+        <div><div class="hint">TCP port</div>
+          <input type="text" name="focas_port" value="{{ focas.port }}" style="max-width:90px"></div>
+        <div><div class="hint">Timeout (s)</div>
+          <input type="text" name="focas_timeout" value="{{ focas.timeout }}" style="max-width:70px"></div>
+      </div>
+      <label><input type="checkbox" name="focas_replace" {{ 'checked' if focas.replace }}>
+        Sending replaces a program with the same O-number by default</label>
+      <div class="hint">The Pi connects to the CNC; no login is needed. The CNC needs FOCAS2/Ethernet enabled (port 8193 by default).</div>
+    </div>
+
+    <div data-show="smb ftp">
+      <label for="password">Password the machine logs in with</label>
+      <input type="text" id="password" name="password" value="" maxlength="14" autocomplete="off">
+      <div class="hint">{{ 'Leave blank to generate one.' if new else 'Leave blank to keep the current password.' }}
+        Max 14 characters; older controls may have limits, so keep it simple.</div>
+    </div>
+
+    <div class="actions">
+      <button>{{ 'Add machine' if new else 'Save changes' }}</button>
+      <a class="btn secondary" href="{{ url_for('web.machines') if new else url_for('web.machine_detail', name=m.name) }}">Cancel</a>
+    </div>
+  </form>
+</div>
+
+{% if not new %}
+<div class="card">
+  <h2>Remove machine</h2>
+  <p>Removes the machine's login and its firewall access. Its folder and files are moved to
+    <span class="mono">.removed/</span> on the Pi, not deleted.</p>
+  <form method="post" action="{{ url_for('web.machine_delete', name=m.name) }}"
+        data-msg="Remove {{ m.label }}?" onsubmit="return confirm(this.dataset.msg)">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button class="danger">Remove {{ m.label }}</button>
+  </form>
+</div>
+{% endif %}
+
+<script>
+(function () {
+  const hints = {
+    smb: "The machine maps a network drive on the Pi (SMB1 for old controls; newer ones use SMB2/3 automatically).",
+    ftp: "The machine logs in to the Pi's FTP server and is locked to its own folder.",
+    focas: "The Pi reads and writes programs directly in CNC memory over Ethernet (FANUC FOCAS). Send and read from this machine's page.",
+    serial: "The Pi listens on the serial port all the time. The machine requests a program by punching (SEND name); anything else it punches is saved."
+  };
+  const type = document.getElementById("type");
+  const transport = document.getElementById("serial_transport");
+  function update() {
+    const proto = type.selectedOptions[0].dataset.protocol;
+    const keys = [proto];
+    if (proto === "serial") keys.push("serial-" + transport.value);
+    document.querySelectorAll("[data-show]").forEach(el => {
+      el.style.display = el.dataset.show.split(" ").some(k => keys.includes(k)) ? "" : "none";
+    });
+    document.querySelectorAll("[data-show-transport]").forEach(el => {
+      el.style.display = proto === "serial" && el.dataset.showTransport === transport.value ? "" : "none";
+    });
+    document.getElementById("ip-label").textContent =
+      proto === "serial" ? "Device server IP address on the CNC network" : "IP address on the CNC network";
+    document.getElementById("protocol-hint").textContent = hints[proto];
+  }
+  type.addEventListener("change", update);
+  transport.addEventListener("change", update);
+  update();
+})();
+</script>
+{% endblock %}
