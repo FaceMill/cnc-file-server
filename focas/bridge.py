@@ -1,19 +1,23 @@
 """FOCAS bridge: a small JSON API on 127.0.0.1 that cnc-admin calls.
 
-Runs in its own 32-bit ARM container because libfwlib32 only exists for
-armv7/x86/x64, while the Pi (and cnc-admin) are 64-bit ARM.
+Runs in its own container because libfwlib32 only exists for armv7/x86/x64:
+on a Pi (64-bit ARM) that is a 32-bit ARM container.
 
-    GET  /status?ip=&port=&timeout=
-    GET  /programs?ip=&port=&timeout=
-    GET  /upload?ip=&port=&timeout=&number=      -> program text
-    POST /download?ip=&port=&timeout=&replace=0|1   body: program
-    POST /delete?ip=&port=&timeout=&number=
+    GET  /status?ip=&port=&timeout=                    status, model, alarm text, message
+    GET  /programs?ip=&port=&timeout=[&folder=]        folder listing, or O-number directory
+    GET  /upload?ip=&port=&timeout=&number=|name=      -> program text
+    POST /download?ip=&port=&timeout=&replace=0|1[&folder=]   body: program
+    POST /delete?ip=&port=&timeout=&number=|name=
+
+"name" and "folder" are full paths in the CNC's own memory ("//CNC_MEM/USER/PATH1/O1234",
+"//CNC_MEM/USER/PATH1/"), for controls with program folders.
 """
 import hmac
 import ipaddress
 import json
 import logging
 import os
+import re
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
@@ -48,6 +52,25 @@ def program_number(q):
     if not 1 <= n <= 9999:
         raise ValueError("program number must be 1-9999")
     return n
+
+
+# Program folders: only the CNC's own memory (not a data server or memory card), plain
+# names, no "." or ".." parts. FANUC allows 211 characters for a path.
+_PART = r"[A-Za-z0-9_+-][A-Za-z0-9_.+-]{0,31}"
+FOLDER_RE = re.compile(rf"//CNC_MEM/(?:{_PART}/)*")
+PROGRAM_RE = re.compile(rf"//CNC_MEM/(?:{_PART}/)*{_PART}")
+
+
+def folder_path(raw):
+    if len(raw) > 211 or not FOLDER_RE.fullmatch(raw):
+        raise ValueError("folder must be a path in CNC memory like //CNC_MEM/USER/PATH1/")
+    return raw
+
+
+def program_path(raw):
+    if len(raw) > 211 or not PROGRAM_RE.fullmatch(raw):
+        raise ValueError("program must be a path in CNC memory like //CNC_MEM/USER/PATH1/O1234")
+    return raw
 
 
 def machine_lock(ip):
@@ -99,43 +122,25 @@ class Handler(BaseHTTPRequestHandler):
         try:
             with machine_lock(ip), focas.connect(ip, port, timeout) as h:
                 if route == ("GET", "/status"):
-                    return self._reply(200, focas.status(h))
+                    return self._reply(200, focas.status(h, details=True))
                 if route == ("GET", "/programs"):
-                    return self._reply(200, {"programs": focas.directory(h)})
+                    return self._reply(200, self._programs(h, q))
                 if route == ("GET", "/upload"):
-                    return self._reply(200, focas.upload(h, program_number(q)), "application/octet-stream")
+                    data = focas.upload_name(h, program_path(q["name"])) if "name" in q \
+                        else focas.upload(h, program_number(q))
+                    return self._reply(200, data, "application/octet-stream")
                 if route == ("POST", "/delete"):
+                    if "name" in q:
+                        path = program_path(q["name"])
+                        self._refuse_if_running(h, path.rsplit("/", 1)[1])
+                        focas.delete_name(h, path)
+                        return self._reply(200, {"deleted": path})
                     number = program_number(q)
                     self._refuse_if_running(h, number)
                     focas.delete(h, number)
                     return self._reply(200, {"deleted": number})
-                data, number = focas.to_cnc_format(body)
-                exists = any(p["number"] == number for p in focas.directory(h))
-                if exists and q.get("replace") != "1":
-                    raise ValueError(f"O{number} already exists on the CNC; tick 'replace' to overwrite it")
-                if not exists:
-                    focas.download(h, data)
-                    return self._reply(200, {"number": number, "bytes": len(data), "replaced": False})
-                # Replace: keep a copy, delete, write; put the old program back if writing fails.
-                self._refuse_if_running(h, number)
-                backup, _ = focas.to_cnc_format(focas.upload(h, number))
-                focas.delete(h, number)
-                try:
-                    focas.download(h, data)
-                except Exception as e:
-                    try:
-                        try:
-                            focas.delete(h, number)  # a half-written new program would block the restore
-                        except Exception:
-                            pass
-                        focas.download(h, backup)
-                        restored = "the previous version was restored"
-                    except Exception as e2:
-                        log.error("Restoring O%d failed: %s", number, e2)
-                        restored = f"RESTORING THE PREVIOUS VERSION FAILED ({e2}); it is not on the CNC"
-                    raise focas.FocasError(f"cnc_download3 (O{number}: {restored})", getattr(e, "code", 0)) from e
-                return self._reply(200, {"number": number, "bytes": len(data), "replaced": True})
-        except (ValueError, KeyError) as e:  # includes O-numbers out of range
+                return self._reply(200, self._store(h, q, body))
+        except (ValueError, KeyError) as e:  # includes O-numbers out of range and bad paths
             return self._reply(400, {"error": str(e) or "missing parameter"})
         except focas.FocasError as e:
             return self._reply(502, {"error": str(e), "code": e.code})
@@ -144,11 +149,78 @@ class Handler(BaseHTTPRequestHandler):
             return self._reply(500, {"error": f"{e.__class__.__name__}: {e}"})
 
     @staticmethod
-    def _refuse_if_running(h, number):
+    def _programs(h, q):
+        """The requested (or current) program folder; CNCs without folders: the O-number directory."""
+        current = focas.current_folder(h)
+        if current is None:
+            return {"folders": False, "programs": focas.directory(h)}
+        path = folder_path(q["folder"]) if q.get("folder") else current
+        return {"folders": True, "folder": path, "current": current, "entries": focas.folder(h, path)}
+
+    def _store(self, h, q, body):
+        """Write a program; with replace, keep the old one and put it back if writing fails."""
+        if q.get("folder"):
+            folder = folder_path(q["folder"])
+            data, key = focas.to_cnc_format(body, names=True)
+            entry = next((e for e in focas.folder(h, folder)
+                          if not e["folder"] and focas.same_program(e["name"], key)), None)
+            label = entry["name"] if entry else focas.program_label(key)
+            exists = entry is not None
+            write = lambda d: focas.download_to(h, folder, d)
+            read_old = lambda: focas.upload_name(h, folder + label)
+            remove = lambda: focas.delete_name(h, folder + label)
+            number = key if isinstance(key, int) else None
+            running_key = label
+        else:
+            data, number = focas.to_cnc_format(body)
+            label = f"O{number}"
+            exists = any(p["number"] == number for p in focas.directory(h))
+            write = lambda d: focas.download(h, d)
+            read_old = lambda: focas.upload(h, number)
+            remove = lambda: focas.delete(h, number)
+            running_key = number
+        result = {"number": number, "name": label, "bytes": len(data)}
+        if exists and q.get("replace") != "1":
+            raise ValueError(f"{label} already exists on the CNC; tick 'replace' to overwrite it")
+        if not exists:
+            write(data)
+            return {**result, "replaced": False}
+        # Replace: keep a copy, delete, write; put the old program back if writing fails.
+        self._refuse_if_running(h, running_key)
+        backup, _ = focas.to_cnc_format(read_old(), names=bool(q.get("folder")))
+        remove()
+        try:
+            write(data)
+        except Exception as e:
+            try:
+                try:
+                    remove()  # a half-written new program would block the restore
+                except Exception:
+                    pass
+                write(backup)
+                restored = "the previous version was restored"
+            except Exception as e2:
+                log.error("Restoring %s failed: %s", label, e2)
+                restored = f"RESTORING THE PREVIOUS VERSION FAILED ({e2}); it is not on the CNC"
+            raise focas.FocasError(f"download ({label}: {restored})", getattr(e, "code", 0)) from e
+        return {**result, "replaced": True}
+
+    @staticmethod
+    def _refuse_if_running(h, program):
+        """program: an O-number, or a program file name in a folder ("O0042", "PART-A")."""
         st = focas.status(h)
         running = st.get("running") or {}
-        if running.get("number") == number and st["run"] in ("START", "HOLD", "STOP"):
-            raise ValueError(f"O{number} is the active program on the CNC; reset the CNC first")
+        if st["run"] not in ("START", "HOLD", "STOP"):
+            return
+        if isinstance(program, int):
+            active = running.get("number") == program
+            label = f"O{program}"
+        else:
+            name = running.get("name") or ""
+            active = name == program or (running.get("number") and focas.same_program(program, running["number"]))
+            label = program
+        if active:
+            raise ValueError(f"{label} is the active program on the CNC; reset the CNC first")
 
     def do_GET(self):
         self._handle("GET")

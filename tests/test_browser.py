@@ -69,6 +69,16 @@ with sync_playwright() as p:
     page.goto(BASE + "/machines/fanuc5")
     expect(page.locator("#cnc-programs")).to_contain_text("O1000", timeout=8000)
     check("connected" in page.locator("#cnc-status").inner_text(), "FOCAS status and directory loaded by JS")
+    check("FANUC 0i-M" in page.locator("#cnc-model").inner_text() and "COOLANT" in page.locator("#cnc-message").inner_text(),
+          "control model and operator message shown")
+    check(page.locator("#cnc-folder").inner_text() == "//CNC_MEM/USER/PATH1/"
+          and page.locator("input.cnc-folder").first.input_value() == "//CNC_MEM/USER/PATH1/",
+          "program folder shown, Send to CNC targets it")
+    page.locator("#cnc-programs a:has-text('LIBRARY/')").click()
+    expect(page.locator("#cnc-programs")).to_contain_text("O8000", timeout=8000)
+    check(page.locator("input.cnc-folder").first.input_value() == "//CNC_MEM/USER/PATH1/LIBRARY/", "sub-folder opens; Send follows it")
+    page.locator("#cnc-programs a:has-text('up to')").click()
+    expect(page.locator("#cnc-programs")).to_contain_text("BRACKET-OP2", timeout=8000)
     page.locator("#cnc-programs tr", has_text="O2050").locator("button:has-text('Read')").click()
     check("saved as received/O2050_" in page.content(), "Read from CNC saves to received/")
     page.once("dialog", lambda d: d.accept())

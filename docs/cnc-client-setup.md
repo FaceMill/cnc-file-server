@@ -81,8 +81,11 @@ or Data Server manual. Active and passive FTP both work.
 Instead of the operator fetching files, the Pi writes and reads programs directly in CNC memory.
 On the control: SYSTEM → ETHPRM → embedded port → COMMON (IP, mask, no router) and the **FOCAS2** screen
 (TCP port 8193). Turn the program-protect key off to allow writing. O8000–O9999 may be protected by
-parameter 3202. The machine's admin page shows the CNC status and its program directory, with
-*Send to CNC*, *Read*, and *Delete* buttons. The active program can't be overwritten or deleted.
+parameter 3202. The machine's admin page shows the CNC status (with the control model, alarm text and
+operator message) and its program directory, with *Send to CNC*, *Read*, and *Delete* buttons. The active
+program can't be overwritten or deleted. On 30i/31i/32i and 0i-F the page browses the program folders
+(`//CNC_MEM/USER/PATH1/` and below) and handles named programs (first line `<NAME>`) and 8-digit O-numbers.
+Test a new control with a spare program number or a scratch folder first.
 
 The FOCAS library is FANUC's software; see `focas/lib/README.md` about licensing.
 

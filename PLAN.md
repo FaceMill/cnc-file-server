@@ -22,7 +22,7 @@ control type when adding a machine, and the admin page sets up the right one.
 |---|---|---|
 | **Network share (SMB)** | The machine maps a drive on the Pi. SMB1 for old controls; newer ones negotiate SMB2/3 automatically | Haas Classic, Haas NGC, Siemens 840D PCU 50 (XP), Siemens 840D sl / 828D (Operate), Heidenhain TNC/iTNC, Windows-based controls (Mazak Matrix/Smooth, Okuma OSP-P, Hurco) |
 | **FTP** | The machine logs in to the Pi's FTP server (vsftpd) and is locked to its own folder. Active and passive mode | FANUC with Data Server (FTP mode, including DNC operation from the Pi), FANUC embedded Ethernet without Data Server, other FTP controls (Mitsubishi M70/M80, Brother) |
-| **FOCAS** (FANUC Ethernet) | The Pi reads and writes programs **directly in CNC memory** over Ethernet (TCP 8193), from the machine's page: live CNC status (mode, run state, alarm, active program), the CNC's program directory, Send to CNC (optionally replacing an existing O-number), Read from CNC, and Delete. Uses FANUC's FOCAS2 library (`libfwlib32`, via github.com/Ladder99/fanuc-driver) in a `focas-bridge` container (32-bit ARM on a Pi, x86-64 on a PC) | FANUC 0i-D/F, 16i/18i/21i (with Ethernet), 30i/31i/32i |
+| **FOCAS** (FANUC Ethernet) | The Pi reads and writes programs **directly in CNC memory** over Ethernet (TCP 8193), from the machine's page: live CNC status (mode, run state, active program, control model, alarm text, operator message), the CNC's program directory or program folders (30i/31i/32i, 0i-F: browse folders, named and 8-digit programs), Send to CNC (optionally replacing an existing program), Read from CNC, and Delete. Uses FANUC's FOCAS2 library (`libfwlib32`, via github.com/Ladder99/fanuc-driver) in a `focas-bridge` container (32-bit ARM on a Pi, x86-64 on a PC) | FANUC 0i-D/F, 16i/18i/21i (with Ethernet), 30i/31i/32i |
 | **RS-232 serial DNC** | Engine merged from **serial-dnc**. The Pi listens on each port all the time. The machine **requests** a program by punching `(SEND O1234)`; after a send delay the Pi drip-feeds it. Anything else the machine punches is saved to `<machine>/received/`. XON/XOFF, RTS/CTS or DSR/DTR flow control; 4-byte writes to stay within FANUC's 10-character XOFF limit | FANUC RS-232 (no Ethernet), other serial controls (older Haas, Fadal, Mazak, Okuma) |
 
 Serial lines connect either to a **USB-to-RS-232 adapter** on the Pi (FTDI chipset
@@ -162,7 +162,7 @@ yet.** Run it all again with `tests/run_all.sh --fullstack` (see `tests/README.m
 | Control types, 41 | Every control type renders, generates the right shares/users/firewall |
 | Serial DNC over TCP, 32 | `(SEND ...)` requests, byte-exact sends, ≤10 chars after XOFF, punches saved, interrupts, cancel, live settings |
 | Serial DNC over a tty, 8 | The USB-adapter code path, exclusive lock, 1.16 MB drip-feed byte-exact through XOFF pauses, adapter unplugged, 40 concurrent admin edits |
-| FOCAS bridge (FANUC's real library on 32-bit ARM, x86-64 and 32-bit x86), FOCAS admin side | Library loads, FANUC error codes, token, input checks, replace restores the old program on failure |
+| FOCAS bridge (FANUC's real library on 32-bit ARM, x86-64 and 32-bit x86), FOCAS admin side | Library loads (every function used exists in each build), FANUC error codes, token, input checks, model/alarm/message and folder-listing parsing, replace restores the old program on failure (by O-number and in folders), folder path checks |
 | Review fixes, 40 + 20 | One regression check per fix from the two security and correctness reviews |
 | Recycle, health/alerts, appearance, 21 / 33 / 33 | Retention purge never follows symlinks; host health and email alerts; themes and logo validation |
 | Backup / restore drill, 24 | Real `backup.sh` / `restore.sh` with restic: wipe everything, restore, compare every file |
@@ -278,8 +278,11 @@ docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image
   (x86-64 hosts get the native x86-64 build). The Pi 5 runs 32-bit containers natively,
   and the library's 32K segment alignment suits the Pi 5's 16K-page kernel. Verify on the real Pi;
   the fallback is `kernel=kernel8.img` (4K pages) in `/boot/firmware/config.txt`.
-- **FOCAS struct layouts** follow FANUC's headers via fanuc-driver. Program upload/download
-  and status must be verified on a real control (start with a test program number).
+- **FOCAS struct layouts** follow FANUC's `fwlib32.h` (checked against the x86-64 library's
+  disassembly for the 32-bit "long"). Program upload/download, status, alarm text and program
+  folders must be verified on a real control (start with a test program number or scratch folder).
+  The folder functions (`cnc_rdpdf_*`, `cnc_upstart4`/`dwnstart4`, `cnc_pdf_del`) are only used when
+  the control reports program folders; older controls keep the O-number functions.
 
 - **FTP and SMB1 are plaintext/weak** by design for old controls. This is acceptable
   only because the CNC network is isolated, with no gateway and no routing.

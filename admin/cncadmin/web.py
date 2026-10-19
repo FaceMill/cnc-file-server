@@ -414,8 +414,9 @@ def focas_log(m, level, message):
 def focas_status(name):
     m = focas_machine(name)
     try:
-        return jsonify({"status": focas_client.status(m), "programs": focas_client.programs(m)})
-    except focas_client.FocasError as e:
+        listing = focas_client.programs(m, request.args.get("folder") or None)
+        return jsonify({"status": focas_client.status(m), **listing})
+    except (ValueError, focas_client.FocasError) as e:
         return jsonify({"error": str(e)})
 
 
@@ -425,19 +426,22 @@ def focas_send(name):
     m = focas_machine(name)
     filename = request.form.get("filename", "")
     replace = bool(request.form.get("replace"))
+    folder = request.form.get("folder") or None
     try:
         with open(machine_file(m, "programs", filename), "rb") as f:
             data = f.read()
         if replace:
-            _backup_before_replace(m, data)
-        res = focas_client.download(m, data, replace)
+            _backup_before_replace(m, data, folder)
+        res = focas_client.download(m, data, replace, folder)
     except (ValueError, focas_client.FocasError) as e:
         focas_log(m, "error", f"Send of {filename} to CNC failed: {e}")
         flash(f"Send failed: {e}", "error")
     else:
         what = "replaced" if res["replaced"] else "written"
-        focas_log(m, "info", f"{filename} {what} as O{res['number']} in CNC memory ({res['bytes']} bytes)")
-        flash(f"{filename} {what} as O{res['number']} in CNC memory.", "ok")
+        label = res.get("name") or f"O{res['number']}"
+        where = f" in {folder}" if folder else ""
+        focas_log(m, "info", f"{filename} {what} as {label}{where} in CNC memory ({res['bytes']} bytes)")
+        flash(f"{filename} {what} as {label}{where} in CNC memory.", "ok")
     return redirect(url_for("web.machine_detail", name=name))
 
 
@@ -448,21 +452,57 @@ def _cnc_number(raw):
     return n
 
 
-def _backup_before_replace(m, data):
+def _cnc_program():
+    """(number, name) from the form: a full path for CNCs with program folders, else an O-number."""
+    if request.form.get("name"):
+        return None, focas_client.program_path(request.form["name"])
+    return _cnc_number(request.form.get("number", "")), None
+
+
+def _program_label(number, name):
+    return name if name else f"O{number}"
+
+
+def _received_name(number, name, suffix=""):
+    """received/ file name for a program read from the CNC: O0042_<time>.nc or PART-A_<time>.nc."""
+    base = name.rsplit("/", 1)[1] if name else f"O{number:04d}"
+    base = re.sub(r"[^A-Za-z0-9_+-]", "_", base)
+    return f"{base}_{datetime.datetime.now():%Y%m%d-%H%M%S}{suffix}.nc"
+
+
+def _backup_before_replace(m, data, folder=None):
     """Save the CNC's current copy to received/ before it is replaced (kept even if the
     bridge's own restore fails)."""
-    match = re.search(rb"^\s*%?\s*O(\d{1,4})\b", data.replace(b"\r", b"\n"), re.M)
-    if not match:
+    key = focas_client.program_key(data)
+    if key is None:
         return
-    number = int(match.group(1))
+    number = name = None
     try:
-        old = focas_client.upload(m, number)
-    except focas_client.FocasError:
+        if folder:
+            listing = focas_client.programs(m, folder)
+            entry = next((e for e in listing.get("entries", [])
+                          if not e["folder"] and focas_client.same_program(e["name"], key)), None)
+            if not entry:
+                return  # not on the CNC yet: nothing to keep
+            name = folder + entry["name"]
+        elif isinstance(key, int) and 1 <= key <= 9999:
+            number = key
+        else:
+            return
+        old = focas_client.upload(m, number=number, name=name)
+    except (ValueError, focas_client.FocasError):
         return  # not on the CNC yet: nothing to keep
-    folder = dnc_files.resolve_dir(f"{m['name']}/{config.RECEIVED_SUBDIR}")
-    fname = f"O{number:04d}_{datetime.datetime.now():%Y%m%d-%H%M%S}_before-replace.nc"
-    system.write_shared_file(os.path.join(folder, fname), old)
-    focas_log(m, "info", f"O{number}: copy from the CNC saved as received/{fname} before replacing it")
+    folder_dir = dnc_files.resolve_dir(f"{m['name']}/{config.RECEIVED_SUBDIR}")
+    for n in range(100):  # two replaces within a second must not lose (or crash on) a copy
+        fname = _received_name(number, name, "_before-replace" + (f"-{n}" if n else ""))
+        try:
+            system.write_shared_file(os.path.join(folder_dir, fname), old)
+            break
+        except FileExistsError:
+            continue
+    else:
+        raise ValueError("Could not save a copy of the CNC's program before replacing it; nothing was changed.")
+    focas_log(m, "info", f"{_program_label(number, name)}: copy from the CNC saved as received/{fname} before replacing it")
 
 
 @bp.post("/machines/<name>/focas/read")
@@ -470,21 +510,22 @@ def _backup_before_replace(m, data):
 def focas_read(name):
     m = focas_machine(name)
     try:
-        number = _cnc_number(request.form.get("number", ""))
-        data = focas_client.upload(m, number)
+        number, path = _cnc_program()
+        data = focas_client.upload(m, number=number, name=path)
     except (ValueError, focas_client.FocasError) as e:
         focas_log(m, "error", f"Read from CNC failed: {e}")
         flash(f"Read failed: {e}", "error")
         return redirect(url_for("web.machine_detail", name=name))
     folder = dnc_files.resolve_dir(f"{m['name']}/{config.RECEIVED_SUBDIR}")
-    fname = f"O{number:04d}_{datetime.datetime.now():%Y%m%d-%H%M%S}.nc"
+    fname = _received_name(number, path)
     try:
         system.write_shared_file(os.path.join(folder, fname), data)
     except FileExistsError:
         flash("A copy was saved less than a second ago; try again.", "error")
         return redirect(url_for("web.machine_detail", name=name))
-    focas_log(m, "info", f"O{number} read from CNC memory, saved as received/{fname} ({len(data)} bytes)")
-    flash(f"O{number} saved as received/{fname}.", "ok")
+    label = _program_label(number, path)
+    focas_log(m, "info", f"{label} read from CNC memory, saved as received/{fname} ({len(data)} bytes)")
+    flash(f"{label} saved as received/{fname}.", "ok")
     return redirect(url_for("web.machine_detail", name=name))
 
 
@@ -493,14 +534,15 @@ def focas_read(name):
 def focas_delete(name):
     m = focas_machine(name)
     try:
-        number = _cnc_number(request.form.get("number", ""))
-        focas_client.delete(m, number)
+        number, path = _cnc_program()
+        focas_client.delete(m, number=number, name=path)
     except (ValueError, focas_client.FocasError) as e:
         focas_log(m, "error", f"Delete from CNC failed: {e}")
         flash(f"Delete failed: {e}", "error")
     else:
-        focas_log(m, "info", f"O{number} deleted from CNC memory")
-        flash(f"O{number} deleted from CNC memory.", "ok")
+        label = _program_label(number, path)
+        focas_log(m, "info", f"{label} deleted from CNC memory")
+        flash(f"{label} deleted from CNC memory.", "ok")
     return redirect(url_for("web.machine_detail", name=name))
 
 

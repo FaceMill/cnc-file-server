@@ -5,7 +5,11 @@ from urllib.parse import parse_qs, urlparse
 from werkzeug.security import generate_password_hash
 
 CNC = {"programs": {1: b"%\nO0001(MAIN)\nM30\n%", 42: b"%\nO0042(OLD)\nM30\n%"}, "active": 1, "run": "RESET",
-       "calls": []}
+       "calls": [], "pdf": False}
+# A control with program folders (30i/0i-F): files by full path
+PDF = {"//CNC_MEM/USER/PATH1/O0042": b"%\nO0042(OLD IN FOLDER)\nM30\n%",
+       "//CNC_MEM/USER/PATH1/PART-A": b"%\n<PART-A>(NAMED)\nM30\n%",
+       "//CNC_MEM/USER/PATH1/SUB/O12345678": b"%\nO12345678(EIGHT DIGITS)\nM30\n%"}
 
 
 class FakeBridge(BaseHTTPRequestHandler):
@@ -23,6 +27,8 @@ class FakeBridge(BaseHTTPRequestHandler):
         CNC["calls"].append((method, u.path, q, body))
         if q["ip"] != "192.168.50.31":
             return self.reply(502, {"error": "connect: cannot connect (code -16)", "code": -16})
+        if CNC["pdf"]:
+            return self.pdf(u.path, q, body)
         if u.path == "/status":
             return self.reply(200, {"mode": "EDIT", "run": CNC["run"], "emergency": "", "alarm": False,
                                     "running": {"name": "O%04d" % CNC["active"], "number": CNC["active"]}})
@@ -45,6 +51,36 @@ class FakeBridge(BaseHTTPRequestHandler):
                 replaced = True
             CNC["programs"][n] = body
             return self.reply(200, {"number": n, "bytes": len(body), "replaced": replaced})
+
+    def pdf(self, path, q, body):
+        if path == "/status":
+            return self.reply(200, {"mode": "MEM", "run": "START", "emergency": "", "alarm": True,
+                                    "running": {"name": "PART-A", "number": 0},
+                                    "cnc": {"model": "31i-M", "series": "G421", "version": "28.0", "axes": "5"},
+                                    "alarms": [{"number": 10, "type": 3, "axis": 0, "message": "IMPROPER G-CODE"}],
+                                    "message": None})
+        if path == "/programs":
+            folder = q.get("folder", "//CNC_MEM/USER/PATH1/")
+            subs = sorted({k[len(folder):].split("/")[0] for k in PDF if k.startswith(folder) and "/" in k[len(folder):]})
+            files = [k[len(folder):] for k in sorted(PDF) if k.startswith(folder) and "/" not in k[len(folder):]]
+            return self.reply(200, {"folders": True, "folder": folder, "current": "//CNC_MEM/USER/PATH1/",
+                                    "entries": [{"name": n, "folder": True, "size": 0, "comment": "", "modified": ""} for n in subs]
+                                    + [{"name": n, "folder": False, "size": len(PDF[folder + n]), "comment": "", "modified": ""} for n in files]})
+        if path == "/upload":
+            return self.reply(200, PDF[q["name"]], "application/octet-stream")
+        if path == "/delete":
+            if q["name"].endswith("/PART-A"):
+                return self.reply(400, {"error": "PART-A is the active program on the CNC; reset the CNC first"})
+            PDF.pop(q["name"]); return self.reply(200, {"deleted": q["name"]})
+        if path == "/download":
+            m = re.search(rb"O(\d{1,8})|<([A-Za-z0-9_.+-]+)>", body)
+            name = "O%04d" % int(m.group(1)) if m.group(1) else m.group(2).decode()
+            target = q["folder"] + name; existed = target in PDF
+            if existed and q.get("replace") != "1":
+                return self.reply(400, {"error": f"{name} already exists on the CNC; tick 'replace' to overwrite it"})
+            PDF[target] = body
+            return self.reply(200, {"number": int(m.group(1)) if m.group(1) else None, "name": name,
+                                    "bytes": len(body), "replaced": existed})
 
     def do_GET(self): self.handle_any("GET")
     def do_POST(self): self.handle_any("POST")
@@ -129,6 +165,48 @@ check(any("O77 deleted" in msg for _, msg in flashes(r)) and 77 not in CNC["prog
 log = [e["message"] for e in events.recent_events(20, "fanuc5")]
 check(any("replaced as O42" in e for e in log) and any("deleted from CNC" in e for e in log) and any("failed" in e for e in log),
       "activity log records sends, reads, deletes and failures")
+
+# --- a control with program folders (30i/0i-F) ----------------------------------------
+CNC["pdf"] = True
+st = c.get(BASE + "/machines/fanuc5/focas/status").get_json()
+check(st["folders"] and st["folder"] == "//CNC_MEM/USER/PATH1/" and [e["name"] for e in st["entries"]] == ["SUB", "O0042", "PART-A"],
+      "folder listing for a control with program folders")
+check(st["status"]["cnc"]["model"] == "31i-M" and st["status"]["alarms"][0]["message"] == "IMPROPER G-CODE",
+      "control model and alarm text passed through")
+st = c.get(BASE + "/machines/fanuc5/focas/status?folder=//CNC_MEM/USER/PATH1/SUB/").get_json()
+check([e["name"] for e in st["entries"]] == ["O12345678"], "sub-folder listing")
+for bad in ("//CNC_MEM/USER/../", "//DATA_SV/", "//CNC_MEM/USER", "C:/", "//CNC_MEM/./"):
+    st = c.get(BASE + "/machines/fanuc5/focas/status?folder=" + bad).get_json()
+    check("Not a folder" in st.get("error", ""), f"folder {bad!r} refused before reaching the bridge")
+r = post("/machines/fanuc5/focas/read", name="//CNC_MEM/USER/PATH1/SUB/O12345678")
+saved = glob.glob("/srv/cnc/fanuc5/received/O12345678_*.nc")
+check(len(saved) == 1 and b"EIGHT DIGITS" in open(saved[0], "rb").read(), "read by name (8-digit O-number) saved to received/")
+r = post("/machines/fanuc5/focas/read", name="//CNC_MEM/USER/PATH1/PART-A")
+check(glob.glob("/srv/cnc/fanuc5/received/PART-A_*.nc"), "read a named program")
+for bad in ("//CNC_MEM/USER/PATH1/../../etc", "//CNC_MEM/USER/PATH1/", "//MEMCARD/O1", "O0042"):
+    r = post("/machines/fanuc5/focas/read", name=bad)
+    check(any("Not a program" in msg for _, msg in flashes(r)), f"program path {bad!r} refused")
+open("/srv/cnc/fanuc5/NEW42.NC", "wb").write(b"%\r\nO0042(NEW IN FOLDER)\r\nM30\r\n%\r\n")
+r = post("/machines/fanuc5/focas/send", filename="NEW42.NC", folder="//CNC_MEM/USER/PATH1/")
+check(any("already exists" in msg for _, msg in flashes(r)) and b"OLD IN FOLDER" in PDF["//CNC_MEM/USER/PATH1/O0042"],
+      "send into a folder without replace refused when the program exists")
+r = post("/machines/fanuc5/focas/send", filename="NEW42.NC", folder="//CNC_MEM/USER/PATH1/", replace="on")
+check(any("replaced as O0042 in //CNC_MEM/USER/PATH1/" in msg for _, msg in flashes(r))
+      and b"NEW IN FOLDER" in PDF["//CNC_MEM/USER/PATH1/O0042"], "send into a folder with replace")
+kept = [p for p in glob.glob("/srv/cnc/fanuc5/received/O0042_*_before-replace*.nc") if b"IN FOLDER" in open(p, "rb").read()]
+check(len(kept) == 1, "old copy from the folder saved to received/ before replacing (even within the same second as another)")
+open("/srv/cnc/fanuc5/NAMED.NC", "wb").write(b"%\r\n<PART-B>(NEW NAMED)\r\nM30\r\n%\r\n")
+r = post("/machines/fanuc5/focas/send", filename="NAMED.NC", folder="//CNC_MEM/USER/PATH1/SUB/")
+check("//CNC_MEM/USER/PATH1/SUB/PART-B" in PDF, "named program written into a sub-folder")
+r = post("/machines/fanuc5/focas/send", filename="NAMED.NC", folder="//CNC_MEM/../")
+check(any("Not a folder" in msg for _, msg in flashes(r)), "send to a bad folder refused")
+r = post("/machines/fanuc5/focas/delete", name="//CNC_MEM/USER/PATH1/PART-A")
+check(any("active program" in msg for _, msg in flashes(r)) and "//CNC_MEM/USER/PATH1/PART-A" in PDF, "deleting the running named program refused")
+r = post("/machines/fanuc5/focas/delete", name="//CNC_MEM/USER/PATH1/SUB/PART-B")
+check(any("PART-B deleted" in msg for _, msg in flashes(r)) and "//CNC_MEM/USER/PATH1/SUB/PART-B" not in PDF, "delete by name")
+page = c.get(BASE + "/machines/fanuc5").get_data(as_text=True)
+check('class="cnc-folder"' in page, "Send to CNC forms carry the folder")
+CNC["pdf"] = False
 
 # Unreachable CNC and stopped bridge give clear messages
 post("/machines/fanuc5/edit", label="FANUC 0i-MF FOCAS", type="fanuc-focas", ip="192.168.50.33", password="",

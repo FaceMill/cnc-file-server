@@ -83,17 +83,21 @@
 <div class="card noprint">
   <h2>CNC <span class="muted" style="font-weight:400">({{ m.ip }}:{{ m.focas.port }}, FOCAS)</span></h2>
   <div id="cnc-status" class="muted">Connecting to the CNC...</div>
-  <div class="actions"><button class="secondary" onclick="loadCnc()">Refresh</button></div>
+  <div id="cnc-model" class="muted" style="margin-top:6px"></div>
+  <ul id="cnc-alarms" class="mono" style="color:var(--bad);margin:6px 0 0 18px;padding:0"></ul>
+  <div id="cnc-message" style="margin-top:6px"></div>
+  <div class="actions"><button class="secondary" onclick="loadCnc(cncFolder)">Refresh</button></div>
 </div>
 
 <div class="card noprint">
-  <h2>Programs in CNC memory</h2>
+  <h2>Programs in CNC memory <span id="cnc-folder" class="mono muted" style="font-weight:400"></span></h2>
   <table id="cnc-programs">
     <tr><th>Program</th><th>Comment</th><th>Size</th><th>Modified</th><th></th></tr>
     <tr><td colspan="5" class="muted">Loading...</td></tr>
   </table>
   <p class="hint">Read saves a copy to <span class="mono">{{ m.name }}/received/</span>. Delete removes the program from the CNC
-    (refused while it's the active program).</p>
+    (refused while it's the active program). On controls with program folders, click a folder to open it;
+    Send to CNC writes into the folder shown here.</p>
 </div>
 
 <div class="card">
@@ -110,6 +114,7 @@
         <form method="post" action="{{ url_for('web.focas_send', name=m.name) }}" class="inline">
           <input type="hidden" name="csrf" value="{{ csrf }}">
           <input type="hidden" name="filename" value="{{ f.name }}">
+          <input type="hidden" name="folder" value="" class="cnc-folder">
           <label style="display:inline;font-weight:400;font-size:13px"><input type="checkbox" name="replace" {{ 'checked' if m.focas.replace }}> replace</label>
           <button class="secondary">Send to CNC</button>
         </form>
@@ -120,8 +125,9 @@
     <tr><td colspan="4" class="muted">No programs yet. Office users can drop them into <span class="mono">\\&lt;pi&gt;\CNC\{{ m.name }}</span>.</td></tr>
     {% endfor %}
   </table>
-  <p class="hint">Programs must start with an O-number (O1–O9999). Line endings are converted for the CNC.
-    Without "replace", sending a program number that already exists on the CNC is refused.</p>
+  <p class="hint">Programs must start with an O-number (O1–O9999). On controls with program folders, O-numbers up to
+    8 digits (with that option) and named programs (first line <span class="mono">&lt;NAME&gt;</span>) work too.
+    Line endings are converted for the CNC. Without "replace", sending a program that already exists on the CNC is refused.</p>
 </div>
 
 <div class="card">
@@ -144,15 +150,21 @@
 </div>
 
 <script>
-function loadCnc() {
+let cncFolder = null;  // null: CNC without program folders, or not loaded yet
+function cell(row, text, cls) { const c = row.insertCell(); c.textContent = text; if (cls) c.className = cls; return c; }
+function loadCnc(folder) {
   const box = document.getElementById("cnc-status"), table = document.getElementById("cnc-programs");
+  const model = document.getElementById("cnc-model"), alarms = document.getElementById("cnc-alarms");
+  const message = document.getElementById("cnc-message"), heading = document.getElementById("cnc-folder");
   box.textContent = "Connecting to the CNC...";
-  fetch("{{ url_for('web.focas_status', name=m.name) }}").then(r => r.json()).then(d => {
+  const url = "{{ url_for('web.focas_status', name=m.name) }}" + (folder ? "?folder=" + encodeURIComponent(folder) : "");
+  fetch(url).then(r => r.json()).then(d => {
     while (table.rows.length > 1) table.deleteRow(1);
+    model.textContent = ""; alarms.replaceChildren(); message.textContent = "";
     if (d.error) {
       box.innerHTML = '<span class="pill bad">not connected</span> ';
       box.append(d.error);
-      const row = table.insertRow(); const c = row.insertCell(); c.colSpan = 5; c.className = "muted"; c.textContent = "Not available";
+      const c = cell(table.insertRow(), "Not available", "muted"); c.colSpan = 5;
       return;
     }
     const st = d.status;
@@ -163,29 +175,56 @@ function loadCnc() {
     pill(st.run, st.run === "START" ? "ok" : "idle");
     if (st.alarm) pill("ALARM", "bad");
     if (st.emergency) pill(st.emergency, "bad");
-    if (st.running && st.running.number) box.append("Active program: O" + st.running.number + (st.running.name ? " (" + st.running.name + ")" : ""));
-    if (!d.programs.length) {
-      const row = table.insertRow(); const c = row.insertCell(); c.colSpan = 5; c.className = "muted"; c.textContent = "No programs in CNC memory";
+    if (st.running && (st.running.number || st.running.name))
+      box.append("Active program: " + (st.running.name || "O" + st.running.number));
+    if (st.cnc) model.textContent = "FANUC " + st.cnc.model + " · series " + st.cnc.series + " · version " + st.cnc.version + " · " + st.cnc.axes + " axes";
+    (st.alarms || []).forEach(a => { const li = document.createElement("li"); li.textContent = "Alarm " + a.number + ": " + a.message; alarms.append(li); });
+    if (st.message) { message.innerHTML = '<span class="pill idle">message</span> '; message.append(st.message); }
+
+    cncFolder = d.folders ? d.folder : null;
+    document.querySelectorAll("input.cnc-folder").forEach(i => { i.value = cncFolder || ""; });
+    heading.textContent = d.folders ? d.folder : "";
+    if (d.folders) {
+      if (d.folder !== "//CNC_MEM/") {
+        const up = d.folder.replace(/[^/]+\/$/, "");
+        const c = cell(table.insertRow(), "", "mono"); c.colSpan = 5;
+        const a = document.createElement("a"); a.href = "#"; a.textContent = "↑ up to " + up;
+        a.onclick = e => { e.preventDefault(); loadCnc(up); }; c.append(a);
+      }
+      if (!d.entries.length) { const c = cell(table.insertRow(), "Empty folder", "muted"); c.colSpan = 5; }
+      d.entries.forEach(p => {
+        const row = table.insertRow();
+        if (p.folder) {
+          const c = cell(row, "", "mono"); c.colSpan = 5;
+          const a = document.createElement("a"); a.href = "#"; a.textContent = "📁 " + p.name + "/";
+          a.onclick = e => { e.preventDefault(); loadCnc(d.folder + p.name + "/"); }; c.append(a);
+          return;
+        }
+        cell(row, p.name, "mono"); cell(row, p.comment); cell(row, p.size.toLocaleString() + " B"); cell(row, p.modified);
+        actions(row, ["name", d.folder + p.name], p.name);
+      });
+      return;
     }
+    if (!d.programs.length) { const c = cell(table.insertRow(), "No programs in CNC memory", "muted"); c.colSpan = 5; }
     d.programs.forEach(p => {
       const row = table.insertRow();
-      row.insertCell().textContent = "O" + String(p.number).padStart(4, "0");
-      row.cells[0].className = "mono";
-      row.insertCell().textContent = p.comment;
-      row.insertCell().textContent = p.length.toLocaleString() + " B";
-      row.insertCell().textContent = p.modified;
-      const act = row.insertCell(); act.style.textAlign = "right"; act.style.whiteSpace = "nowrap";
-      act.append(form("{{ url_for('web.focas_read', name=m.name) }}", p.number, "Read", "secondary"), " ",
-                 form("{{ url_for('web.focas_delete', name=m.name) }}", p.number, "Delete", "danger",
-                      "Delete O" + p.number + " from the CNC's memory?"));
+      const label = "O" + String(p.number).padStart(4, "0");
+      cell(row, label, "mono"); cell(row, p.comment); cell(row, p.length.toLocaleString() + " B"); cell(row, p.modified);
+      actions(row, ["number", p.number], "O" + p.number);
     });
   }).catch(() => { box.textContent = "Could not reach the admin server."; });
 }
-function form(action, number, label, cls, confirmText) {
+function actions(row, field, label) {
+  const act = row.insertCell(); act.style.textAlign = "right"; act.style.whiteSpace = "nowrap";
+  act.append(form("{{ url_for('web.focas_read', name=m.name) }}", field, "Read", "secondary"), " ",
+             form("{{ url_for('web.focas_delete', name=m.name) }}", field, "Delete", "danger",
+                  "Delete " + label + " from the CNC's memory?"));
+}
+function form(action, field, label, cls, confirmText) {
   const f = document.createElement("form");
   f.method = "post"; f.action = action; f.className = "inline";
   if (confirmText) f.onsubmit = () => confirm(confirmText);
-  for (const [k, v] of [["csrf", "{{ csrf }}"], ["number", number]]) {
+  for (const [k, v] of [["csrf", "{{ csrf }}"], field]) {
     const i = document.createElement("input"); i.type = "hidden"; i.name = k; i.value = v; f.append(i);
   }
   const b = document.createElement("button"); b.className = cls; b.textContent = label; f.append(b);

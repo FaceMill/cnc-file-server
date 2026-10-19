@@ -63,7 +63,7 @@ firewall rules are set up automatically, and the machine page shows a printable
 |---|---|---|
 | **Network share (SMB)** | The machine maps a drive on the Pi. SMB1 with NTLMv1 for old controls; newer controls negotiate SMB2/3 automatically. | Haas Classic, Haas NGC, Siemens 840D powerline (PCU 50, Windows XP), Siemens 840D sl / 828D (SINUMERIK Operate), Heidenhain TNC / iTNC, Windows-based controls (Mazak Matrix/Smooth, Okuma OSP-P, Hurco) |
 | **FTP** | The machine logs in to the Pi's FTP server (vsftpd), locked to its own folder. Active and passive mode. | FANUC with Data Server (FTP mode, including DNC operation), FANUC embedded Ethernet without Data Server, other FTP controls (Mitsubishi M70/M80, Brother) |
-| **FOCAS** (FANUC Ethernet) | The Pi reads and writes programs **directly in CNC memory** over TCP 8193: live CNC status, the CNC's program list, Send to CNC, Read from CNC, Delete. | FANUC 0i-D/F, 16i/18i/21i (with Ethernet), 30i/31i/32i |
+| **FOCAS** (FANUC Ethernet) | The Pi reads and writes programs **directly in CNC memory** over TCP 8193: live CNC status with the control model, alarm text and operator message, the CNC's program list (browsable program folders on 30i/31i/32i and 0i-F, with named and 8-digit programs), Send to CNC, Read from CNC, Delete. | FANUC 0i-D/F, 16i/18i/21i (with Ethernet), 30i/31i/32i |
 | **RS-232 serial DNC** | The Pi listens on each serial port continuously. The machine **requests** a program by punching `(SEND O1234)`; after a send delay the Pi drip-feeds it with XON/XOFF. Anything else the machine punches is saved to `<machine>/received/`. Manual sends from the web page too. | FANUC RS-232 (no Ethernet), older Haas, Fadal, Mazak, Okuma and other serial controls |
 
 Serial machines connect through a **USB-to-RS-232 adapter** on the Pi (FTDI chipset
@@ -154,8 +154,10 @@ using its setup sheet ([docs/cnc-client-setup.md](docs/cnc-client-setup.md)).
   program to the Pi, just punch it out. Abort by resetting and calling again, or press
   *Cancel send* on the machine's page.
 - **FOCAS machines:** on the machine's page, *Send to CNC* (tick *replace* to overwrite an
-  existing O-number — the old version is restored if the write fails), *Read*, *Delete*.
-  The active program can't be overwritten or deleted.
+  existing program — a copy is saved to `received/` first, and the old version is restored if the
+  write fails), *Read*, *Delete*. The active program can't be overwritten or deleted. The page also
+  shows the control model, alarm text and operator message. On controls with program folders,
+  click a folder to open it; *Send to CNC* writes into the folder shown.
 - **Adding a machine:** Machines → Add machine, choose the control type, print the setup
   sheet, enter the values on the control.
 
@@ -214,7 +216,7 @@ network. The last full run passed everything:
 | Static (ruff, shellcheck, compose, Caddyfile, firewall syntax, pip-audit) | all pass |
 | Admin web app / control types | 49 / 41 |
 | Serial DNC over TCP / over a tty (incl. 1 MB drip-feed) | 32 / 8 |
-| FOCAS admin side / FOCAS bridge with FANUC's real library (ARM, x86-64, x86) | 21 / 18 × 3 |
+| FOCAS admin side / FOCAS bridge with FANUC's real library (ARM, x86-64, x86) | 43 / 45 × 3 |
 | Regression checks for every review finding (two reviews) | 40 + 20 |
 | Recycle folders / health + alert emails / appearance + logo | 21 / 33 / 33 |
 | Backup/restore drill (real scripts + restic; wipe and restore, compare every file) | 24 |
@@ -233,7 +235,7 @@ admin/            cnc-admin: Flask web app (config model, rendering, serial DNC,
   cncadmin/templates/        web pages
 samba/            Samba image (used for both the office and the CNC file server)
 ftp/              vsftpd image for FTP machines
-focas/            32-bit FOCAS bridge (FANUC libfwlib32 via ctypes); lib/ for a FANUC-supplied library
+focas/            FOCAS bridge (FANUC libfwlib32 via ctypes); lib/ for a FANUC-supplied library
 caddy/            HTTPS reverse proxy config
 host/             install.sh, setup-network.sh, firewall boot stub and fallback,
                    backup.sh / restore.sh / setup-backup.sh, health.py, systemd/ timers
@@ -265,7 +267,9 @@ At runtime the Pi also has `config/` (site configuration and secrets), `generate
 - **FOCAS** on a Pi uses FANUC's 32-bit ARM library in a 32-bit container (FANUC has no 64-bit
   ARM build). Verify on the real Pi first (fallback: the 4K-page kernel, `kernel=kernel8.img`).
   On an x86-64 PC the native x86-64 library is used instead; see [Other hosts](docs/INSTALL.md#other-hosts-not-a-pi).
-- FOCAS program numbers O1–O9999 only (no 8-digit O-numbers, no 30i folder paths yet).
+- FOCAS: controls without program folders (16i/18i/21i, 0i-D) use O1–O9999. Program folders, named and
+  8-digit programs need a control that has them (30i/31i/32i, 0i-F); only the CNC's own memory
+  (`//CNC_MEM/`) is used, not a data server or memory card. None of this has run on a real control yet.
 - Pushing files to a Data Server acting as an FTP *server* is not supported (the Data Server connects to the Pi instead).
 - Serial drip-feed at 115200 baud runs at ~60% of line speed (4-byte writes for FANUC safety); negligible at 4800/9600.
 - Single admin account.
@@ -277,8 +281,8 @@ covers this repository's own code and documentation only, not the third-party so
 
 - The RS-232 DNC engine is ported from **serial-dnc**,
   including its serial-port guide ([docs/SERIAL-PORTS.md](docs/SERIAL-PORTS.md)).
-- FOCAS structure layouts follow FANUC's headers as mirrored in **Ladder99/fanuc-driver**
-  (Apache 2.0).
+- FOCAS structure layouts follow FANUC's `fwlib32.h` (as published in **strangesast/fwlib**) and
+  **Ladder99/fanuc-driver** (Apache 2.0); no code or headers are copied from either.
 - **FANUC FOCAS library:** `libfwlib32` is FANUC's proprietary software and is **not** in this
   repository. The FOCAS image downloads the build redistributed by Ladder99/fanuc-driver at a
   pinned commit (checksum verified), or uses a copy you place in `focas/lib/`. fanuc-driver's
