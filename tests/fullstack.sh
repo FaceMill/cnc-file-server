@@ -105,8 +105,15 @@ n "office -> Pi's CNC-side SMB1 port (firewall checks destination)" port office-
 echo "== CNC machine haas1 192.168.50.11"
 t "SMB1 NTLMv1 login sees the office upload" sh -c "docker exec haas1 smbclient //192.168.50.1/haas1 -U 'haas1%$H1' -m NT1 --option='client min protocol=NT1' --option='client ntlmv2 auth=no' --option='client use spnego=no' -c ls | grep -q O1001.NC"
 t "Haas saves back; office sees it" sh -c "docker exec haas1 sh -c \"printf 'X\n' > /tmp/O2002.NC && smbclient //192.168.50.1/haas1 -U 'haas1%$H1' -m NT1 --option='client min protocol=NT1' -c 'put /tmp/O2002.NC O2002.NC'\" && docker exec office-pc $OFF -c 'cd haas1; ls' | grep -q O2002.NC"
-t "Samba recycle stamps the deletion time (counts toward the 60 days)" sh -c "docker exec haas1 sh -c \"echo x > /tmp/RCY.NC && smbclient //192.168.50.1/haas1 -U 'haas1%$H1' -m NT1 --option='client min protocol=NT1' -c 'put /tmp/RCY.NC RCY.NC' && sleep 3 && smbclient //192.168.50.1/haas1 -U 'haas1%$H1' -m NT1 --option='client min protocol=NT1' -c 'del RCY.NC'\" && pi 'f=/srv/cnc/haas1/.recycle/RCY.NC; [ \$(( \$(stat -c %Z \$f) - \$(stat -c %Y \$f) )) -ge 2 ]'"
-t "Empty now (admin) clears Samba's recycle folders" sh -c "$A post path=/settings/recycle/empty | grep -q 'Recycle folders emptied' && pi '! ls /srv/cnc/haas1/.recycle/RCY.NC 2>/dev/null'"
+recycle_stamp() {   # deleted over SMB1 3 s after upload: ctime (deletion) must be >= 2 s after mtime
+    docker exec haas1 sh -c "echo x > /tmp/RCY.NC && smbclient //192.168.50.1/haas1 -U 'haas1%$H1' -m NT1 --option='client min protocol=NT1' -c 'put /tmp/RCY.NC RCY.NC' && sleep 3 && smbclient //192.168.50.1/haas1 -U 'haas1%$H1' -m NT1 --option='client min protocol=NT1' -c 'del RCY.NC'" &&
+    pi 'f=/srv/cnc/haas1/.recycle/RCY.NC; [ $(( $(stat -c %Z $f) - $(stat -c %Y $f) )) -ge 2 ]'
+}
+empty_now() {
+    $A post path=/settings/recycle/empty | grep -q 'Recycle folders emptied' && ! pi 'ls /srv/cnc/haas1/.recycle/RCY.NC' 2>/dev/null
+}
+t "Samba recycle stamps the deletion time (counts toward the 60 days)" recycle_stamp
+t "Empty now (admin) clears Samba's recycle folders" empty_now
 n "symlink creation over SMB1 refused" docker exec haas1 sh -c "smbclient //192.168.50.1/haas1 -U 'haas1%$H1' -m NT1 --option='client min protocol=NT1' -c 'symlink /etc/passwd evil' 2>&1 | grep -qv NT_STATUS"
 for p in 8443 443 22 9090 8095 21; do n "haas1 -> Pi port $p closed" port haas1 192.168.50.1 "$p"; done
 n "haas1 -> another machine's share" docker exec haas1 smbclient //192.168.50.1/haas2 -U "haas1%$H1" -m NT1 --option='client min protocol=NT1' -c ls
