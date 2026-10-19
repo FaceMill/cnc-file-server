@@ -221,7 +221,7 @@ network. The last full run passed everything:
 | Recycle folders / health + alert emails / appearance + logo | 21 / 33 / 33 |
 | Backup/restore drill (real scripts + restic; wipe and restore, compare every file) | 24 |
 | Fuzzing: hostile configs through real `nft -c` and `testparm` | ~600 + ~1200, 0 failures |
-| Browser (Chromium): pages, JavaScript, upload/delete | 36 |
+| Browser (Chromium): pages, JavaScript, upload/delete, FOCAS folders | 39 |
 | Full stack: simulated Pi, office PCs, CNC machines, rogue device, disaster-recovery drill | 53 |
 
 Details in [tests/README.md](tests/README.md). Not covered without hardware:

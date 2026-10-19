@@ -167,7 +167,7 @@ yet.** Run it all again with `tests/run_all.sh --fullstack` (see `tests/README.m
 | Recycle, health/alerts, appearance, 21 / 33 / 33 | Retention purge never follows symlinks; host health and email alerts; themes and logo validation |
 | Backup / restore drill, 24 | Real `backup.sh` / `restore.sh` with restic: wipe everything, restore, compare every file |
 | Fuzzing | ~1500 random/hostile configs; everything accepted must pass real `nft -c` and `testparm` with no injected settings |
-| Browser (Chromium), 36 | Every page renders, form fields follow the control type, live DNC status and progress, FOCAS table, upload/delete, no JavaScript errors |
+| Browser (Chromium), 39 | Every page renders, form fields follow the control type, live DNC status and progress, FOCAS table, upload/delete, no JavaScript errors |
 | Static | ruff, shellcheck, Caddyfile and compose validation, pip-audit |
 
 ### Independent review (security and correctness)
