@@ -214,7 +214,7 @@ network. The last full run passed everything:
 | Static (ruff, shellcheck, compose, Caddyfile, firewall syntax, pip-audit) | all pass |
 | Admin web app / control types | 49 / 41 |
 | Serial DNC over TCP / over a tty (incl. 1 MB drip-feed) | 32 / 8 |
-| FOCAS admin side / FOCAS bridge with FANUC's real library | 21 / 18 |
+| FOCAS admin side / FOCAS bridge with FANUC's real library (ARM, x86-64, x86) | 21 / 18 × 3 |
 | Regression checks for every review finding (two reviews) | 40 + 20 |
 | Recycle folders / health + alert emails / appearance + logo | 21 / 33 / 33 |
 | Backup/restore drill (real scripts + restic; wipe and restore, compare every file) | 24 |
@@ -262,8 +262,9 @@ At runtime the Pi also has `config/` (site configuration and secrets), `generate
 ## Known limitations
 
 - Not yet tested on real hardware (Pi, CNC controls, adapters).
-- **FOCAS** needs FANUC's 32-bit ARM library; the Pi 5 runs it in a 32-bit container. Verify on
-  the real Pi first (fallback: the 4K-page kernel, `kernel=kernel8.img`).
+- **FOCAS** on a Pi uses FANUC's 32-bit ARM library in a 32-bit container (FANUC has no 64-bit
+  ARM build). Verify on the real Pi first (fallback: the 4K-page kernel, `kernel=kernel8.img`).
+  On an x86-64 PC the native x86-64 library is used instead; see [Other hosts](docs/INSTALL.md#other-hosts-not-a-pi).
 - FOCAS program numbers O1–O9999 only (no 8-digit O-numbers, no 30i folder paths yet).
 - Pushing files to a Data Server acting as an FTP *server* is not supported (the Data Server connects to the Pi instead).
 - Serial drip-feed at 115200 baud runs at ~60% of line speed (4-byte writes for FANUC safety); negligible at 4800/9600.

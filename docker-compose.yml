@@ -45,14 +45,15 @@ services:
       - /srv/cnc:/srv/cnc
       - ./generated:/etc/cnc:ro
 
-  # FANUC FOCAS (Ethernet program transfer). 32-bit ARM because FANUC's library has
-  # no 64-bit ARM build; listens on 127.0.0.1:8095 and only answers requests that
+  # FANUC FOCAS (Ethernet program transfer). FANUC's library has no 64-bit ARM build, so
+  # on a Pi this is a 32-bit ARM container; on an x86-64 PC it's linux/amd64 (FOCAS_PLATFORM
+  # in .env, set by host/install.sh). Listens on 127.0.0.1:8095 and only answers requests that
   # carry the shared token, i.e. from cnc-admin. See focas/lib/README.md about the
   # library's licence.
   focas-bridge:
     build: {context: ./focas, network: host}
     image: local/cnc-focas:1.0
-    platform: linux/arm/v7
+    platform: ${FOCAS_PLATFORM:-linux/arm/v7}
     container_name: focas-bridge
     network_mode: host
     restart: unless-stopped

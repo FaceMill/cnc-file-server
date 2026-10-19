@@ -235,7 +235,7 @@ Do one machine at a time, starting with the least critical:
 **Use a FANUC-supplied FOCAS library** instead of the downloaded one:
 
 ```bash
-sudo cp libfwlib32.so /opt/cnc-server/focas/lib/libfwlib32.so   # 32-bit ARM Linux build
+sudo cp libfwlib32.so /opt/cnc-server/focas/lib/libfwlib32.so   # the build for FOCAS_PLATFORM in .env
 cd /opt/cnc-server && sudo docker compose build focas-bridge && sudo docker compose up -d focas-bridge
 ```
 
@@ -391,6 +391,32 @@ You need the backup destination, the **repository password** from step 15, and t
 The full-stack test (`tests/fullstack.sh`) runs this procedure every time: it backs up,
 wipes the programs and configuration, restores, and checks that machines and the admin
 login work again.
+
+## Other hosts (not a Pi)
+
+The server isn't tied to the Pi. Any **Linux** machine running Docker Engine can host it,
+for example an x86-64 mini PC or a VM, as long as it has:
+
+- **Two network ports** (office and CNC switch). In a VM, two bridged adapters.
+- **NetworkManager, nftables and systemd** (Debian 12 or Ubuntu 22.04/24.04). The admin page
+  changes addresses through `nmcli`; the firewall and timers run on the host.
+- **Docker Engine**, not Docker Desktop: Desktop hides the network ports behind its own VM.
+
+Install the OS, then follow sections 5 to 17 as written. `host/install.sh` picks the FOCAS
+library for the CPU and writes `FOCAS_PLATFORM` to `.env`:
+
+| CPU (`uname -m`) | FOCAS bridge |
+|---|---|
+| `aarch64` (Pi) | 32-bit ARM container (FANUC has no 64-bit ARM library) |
+| `x86_64` | native x86-64 |
+| `i686` | 32-bit x86 |
+
+After building, it checks the library loads. If it doesn't (some 64-bit ARM servers can't
+run 32-bit containers), only FANUC FOCAS machines are affected. Pi-only health readings
+(SoC temperature, throttling) are blank on other hardware.
+
+Not yet tested on real non-Pi hardware; the FOCAS bridge has been tested on all three
+platforms under emulation.
 
 ## Ports for IT
 

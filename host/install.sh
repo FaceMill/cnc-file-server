@@ -1,5 +1,6 @@
 #!/bin/bash
-# One-time host bootstrap for Raspberry Pi OS Lite 64-bit (Bookworm).
+# One-time host bootstrap for Raspberry Pi OS Lite 64-bit (Bookworm). Also written to work
+# on Debian 12 / Ubuntu on an x86-64 PC with two network ports (not yet tested there).
 # Copy the project to /opt/cnc-server, create .env from .env.example, then:
 #   cd /opt/cnc-server && sudo ./host/install.sh
 set -euo pipefail
@@ -8,6 +9,20 @@ PROJECT_DIR=$(cd "$(dirname "$0")/.." && pwd)
 cd "$PROJECT_DIR"
 [ -f .env ] || { echo "Create .env from .env.example first." >&2; exit 1; }
 set -a; . ./.env; set +a
+
+# FOCAS bridge platform. FANUC's library comes for 32-bit ARM, 32-bit x86 and x86-64 Linux,
+# but not 64-bit ARM, so a Pi runs the bridge as a 32-bit ARM container.
+if [ -z "${FOCAS_PLATFORM:-}" ]; then
+    case "$(uname -m)" in
+        aarch64|armv7l|armv8l) FOCAS_PLATFORM=linux/arm/v7 ;;
+        x86_64) FOCAS_PLATFORM=linux/amd64 ;;
+        i?86) FOCAS_PLATFORM=linux/386 ;;
+        *) echo "No FANUC FOCAS library exists for this CPU ($(uname -m))." >&2; exit 1 ;;
+    esac
+    printf '\n# Set by host/install.sh for this CPU (%s)\nFOCAS_PLATFORM=%s\n' "$(uname -m)" "$FOCAS_PLATFORM" >> .env
+    export FOCAS_PLATFORM
+fi
+echo "FOCAS bridge platform: $FOCAS_PLATFORM"
 
 apt-get update
 apt-get -y full-upgrade
@@ -48,6 +63,14 @@ chmod 0700 config generated
 
 # Site config, generated files, admin password
 docker compose build --pull
+# The FOCAS library must load on this host (a 32-bit ARM container needs a kernel with
+# 32-bit support: a Pi has it, some other ARM servers don't). Only FOCAS depends on it.
+if docker run --rm --platform "$FOCAS_PLATFORM" local/cnc-focas:1.0 python -c "import focas; focas.lib()"; then
+    echo "FOCAS library loads ($FOCAS_PLATFORM)."
+else
+    echo "WARNING: the FOCAS library doesn't load on this host ($FOCAS_PLATFORM). FANUC FOCAS machines" >&2
+    echo "         won't work; everything else will. See focas/lib/README.md." >&2
+fi
 if [ ! -f config/site.json ]; then
     docker compose run --rm --no-deps cnc-admin python -m cncadmin.cli init
 fi

@@ -19,7 +19,7 @@ tests/fullstack.sh --clean     # remove the simulated Pi
 | `test_serial_dnc.py` | Serial DNC against a simulated FANUC on a TCP serial device server |
 | `test_serial_tty.py` | Serial DNC over a real tty (the USB adapter code path), 1 MB drip-feed, concurrency |
 | `test_focas_admin.py` | FOCAS pages and actions against a simulated bridge |
-| `test_focas_bridge.py` | The 32-bit FOCAS bridge with FANUC's real library |
+| `test_focas_bridge.py` | The FOCAS bridge with FANUC's real library, run on 32-bit ARM, x86-64 and 32-bit x86 |
 | `test_recycle.py` | Recycle folders: retention setting, emptying by age (counted from deletion), Empty now, symlink safety |
 | `test_review2_fixes.py` | One regression check per fix from the second review (network races, folder takeover, FOCAS ranges, …) |
 | `test_monitor.py` | Health checks (temperature, power, SSD, clock, UPS, backups, disk), Status-page Health card, alert emails against a fake mail server |

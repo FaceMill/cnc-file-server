@@ -103,11 +103,15 @@ with sync_playwright() as p:
 
     # theme switch: pick Dark, check the page really turns dark, switch back
     page.goto(BASE + "/settings")
-    page.check("input[name=theme][value=dark]"); page.click("button:has-text('Save colours')")
+    page.check("input[name=theme][value=dark]")
+    with page.expect_navigation():  # the save reloads the page; read colours from the new one
+        page.click("button:has-text('Save colours')")
     bg = page.evaluate("getComputedStyle(document.body).backgroundColor")
     check(bg == "rgb(18, 22, 27)", f"Dark theme applied in the browser ({bg})")
     page.screenshot(path=f"{SHOTS}/dark-settings.png", full_page=True)
-    page.check("input[name=theme][value=default]"); page.click("button:has-text('Save colours')")
+    page.check("input[name=theme][value=default]")
+    with page.expect_navigation():
+        page.click("button:has-text('Save colours')")
 
     check(not js_errors, "no JavaScript errors" + (f": {js_errors[:3]}" if js_errors else ""))
     b.close()

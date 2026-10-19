@@ -1,7 +1,8 @@
 """Minimal FANUC FOCAS2 wrapper (ctypes) for program transfer and status.
 
-Uses libfwlib32 for 32-bit ARM Linux. Structure layouts follow the FANUC
-headers as mirrored in Ladder99's fwlib.cs (github.com/Ladder99/fanuc-driver).
+Uses libfwlib32 for Linux (32-bit ARM, 32-bit x86 or x86-64 build). Structure
+layouts follow the FANUC headers as mirrored in Ladder99's fwlib.cs
+(github.com/Ladder99/fanuc-driver).
 """
 import ctypes
 import os
@@ -11,6 +12,9 @@ import time
 from contextlib import contextmanager
 
 LIB_PATH = os.environ.get("FWLIB_PATH", "/usr/local/lib/libfwlib32.so")
+# FANUC's "long" is 32 bits in every build, including x86-64 (where C's long is 64):
+# fwlib.cs passes it as a C# int on all platforms.
+FLONG = ctypes.c_int32
 
 EW_OK, EW_BUFFER = 0, 10
 ERRORS = {
@@ -77,17 +81,17 @@ def lib():
         if _lib is None:
             l = ctypes.CDLL(LIB_PATH)
             s, us, p = ctypes.c_short, ctypes.c_ushort, ctypes.POINTER
-            l.cnc_startupprocess.argtypes, l.cnc_startupprocess.restype = [ctypes.c_long, ctypes.c_char_p], s
-            l.cnc_allclibhndl3.argtypes, l.cnc_allclibhndl3.restype = [ctypes.c_char_p, us, ctypes.c_long, p(us)], s
+            l.cnc_startupprocess.argtypes, l.cnc_startupprocess.restype = [FLONG, ctypes.c_char_p], s
+            l.cnc_allclibhndl3.argtypes, l.cnc_allclibhndl3.restype = [ctypes.c_char_p, us, FLONG, p(us)], s
             l.cnc_freelibhndl.argtypes, l.cnc_freelibhndl.restype = [us], s
             l.cnc_statinfo.argtypes, l.cnc_statinfo.restype = [us, p(ODBST)], s
             l.cnc_exeprgname.argtypes, l.cnc_exeprgname.restype = [us, p(ODBEXEPRG)], s
-            l.cnc_rdprogdir3.argtypes, l.cnc_rdprogdir3.restype = [us, s, p(ctypes.c_long), p(s), p(PRGDIR3)], s
+            l.cnc_rdprogdir3.argtypes, l.cnc_rdprogdir3.restype = [us, s, p(FLONG), p(s), p(PRGDIR3)], s
             l.cnc_dwnstart3.argtypes, l.cnc_dwnstart3.restype = [us, s], s
-            l.cnc_download3.argtypes, l.cnc_download3.restype = [us, p(ctypes.c_long), ctypes.c_char_p], s
+            l.cnc_download3.argtypes, l.cnc_download3.restype = [us, p(FLONG), ctypes.c_char_p], s
             l.cnc_dwnend3.argtypes, l.cnc_dwnend3.restype = [us], s
-            l.cnc_upstart3.argtypes, l.cnc_upstart3.restype = [us, s, ctypes.c_long, ctypes.c_long], s
-            l.cnc_upload3.argtypes, l.cnc_upload3.restype = [us, p(ctypes.c_long), ctypes.c_char_p], s
+            l.cnc_upstart3.argtypes, l.cnc_upstart3.restype = [us, s, FLONG, FLONG], s
+            l.cnc_upload3.argtypes, l.cnc_upload3.restype = [us, p(FLONG), ctypes.c_char_p], s
             l.cnc_upend3.argtypes, l.cnc_upend3.restype = [us], s
             l.cnc_delete.argtypes, l.cnc_delete.restype = [us, s], s
             l.cnc_getdtailerr.argtypes, l.cnc_getdtailerr.restype = [us, p(ODBERR)], s
@@ -134,7 +138,7 @@ def status(h):
 
 def directory(h):
     """All programs in CNC memory: number, length, comment, modified date."""
-    out, top = [], ctypes.c_long(0)
+    out, top = [], FLONG(0)
     buf = (PRGDIR3 * 10)()
     for _ in range(10000):  # at most 100000 programs; never loop forever
         num = ctypes.c_short(10)
@@ -150,7 +154,7 @@ def directory(h):
                         if md.year else ""})
         if num.value < 10:
             return out
-        top = ctypes.c_long(buf[num.value - 1].number + 1)
+        top = FLONG(buf[num.value - 1].number + 1)
     return out
 
 
@@ -178,7 +182,7 @@ def download(h, data: bytes):
             if time.time() > deadline:
                 raise TimeoutError(f"download did not finish within {TRANSFER_SECONDS} s (CNC busy)")
             chunk = data[pos:pos + 1280]
-            n = ctypes.c_long(len(chunk))
+            n = FLONG(len(chunk))
             ret = l.cnc_download3(h, ctypes.byref(n), chunk)
             if ret == EW_BUFFER:
                 time.sleep(0.02)
@@ -202,7 +206,7 @@ def upload(h, number: int) -> bytes:
         buf = ctypes.create_string_buffer(1281)
         deadline = time.time() + TRANSFER_SECONDS
         while time.time() < deadline:
-            n = ctypes.c_long(1280)
+            n = FLONG(1280)
             ret = l.cnc_upload3(h, ctypes.byref(n), buf)
             if ret == EW_BUFFER:
                 time.sleep(0.02)
