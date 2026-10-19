@@ -139,8 +139,10 @@ and reached over an SSH tunnel (see `docker-compose.yml`).
 
 ## Safety nets
 
-- **Recycle bin**: files deleted over SMB go to a hidden `.recycle/` folder. Deleting
-  a file that is already in the recycle bin removes it for good.
+- **Recycle bin**: files deleted over SMB or from the admin page go to hidden `.recycle/`
+  folders (one for the office share, one per machine). Files deleted more than **60 days**
+  ago are removed automatically (Settings page: adjustable, 0 = off; "Empty now" button).
+  The age counts from deletion: moving a file into the recycle folder sets its change time.
 - **Nightly backups** off the Pi (to do: restic or rsync to a network file server).
 - **Pinned versions**: Debian Bookworm Samba 4.17 is pinned. SMB1 is deprecated
   upstream, so Samba is only upgraded on purpose, after testing.

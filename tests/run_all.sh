@@ -61,6 +61,7 @@ suite "serial DNC (TCP)"         "$ADMIN" "$LO $INIT && timeout 300 python /test
 suite "serial DNC (tty, 1 MB)"   "$ADMIN" "$INIT && timeout 600 python /tests/test_serial_tty.py"
 suite "FOCAS (admin side)"       "$ADMIN" "$INIT && timeout 300 python /tests/test_focas_admin.py"
 suite "review fixes"             "$ADMIN" "$INIT && timeout 300 python /tests/test_review_fixes.py"
+suite "recycle folders"          "$ADMIN" "$INIT && timeout 300 python /tests/test_recycle.py"
 suite "FOCAS bridge (32-bit)"    "--platform linux/arm/v7 -e PYTHONPATH=/app -v $T:/tests:ro local/cnc-focas:1.0" "timeout 300 python /tests/test_focas_bridge.py"
 
 echo "== Fuzz: random/hostile configs -> real nft and testparm"

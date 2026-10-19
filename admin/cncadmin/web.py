@@ -17,7 +17,7 @@ from werkzeug.utils import secure_filename
 
 from . import config, system
 from .config import MACHINE_TYPES, PROTOCOLS, SERIAL_CHOICES, SERIAL_DEFAULTS
-from . import dnc_files, events, focas_client
+from . import dnc_files, events, focas_client, recycle
 from .serial_dnc import manager as dnc
 from .network import CONFIRM_SECONDS, office_change
 from .ntlm import nt_hash
@@ -560,6 +560,41 @@ def _move_to_recycle(m, path):
     if os.path.lexists(dest):
         dest = os.path.join(recycle, f"{datetime.datetime.now():%Y%m%d-%H%M%S}-{base}")
     os.rename(path, dest)
+
+
+# --- settings ---------------------------------------------------------------
+
+@bp.get("/settings")
+@login_required
+def settings():
+    return render_template("settings.html", site=config.load(), recycle_stats=recycle.stats())
+
+
+@bp.post("/settings/recycle")
+@login_required
+def settings_recycle():
+    with config.lock:
+        site = config.load()
+        try:
+            site["recycle"]["retention_days"] = int(request.form.get("retention_days", ""))
+            config.save(site)
+        except ValueError as e:
+            msg = str(e) if "Recycle" in str(e) else "Enter a whole number of days (0 = never)."
+            flash(msg, "error")
+            return redirect(url_for("web.settings"))
+    days = site["recycle"]["retention_days"]
+    flash(f"Recycle folders are now emptied of files older than {days} days." if days
+          else "Automatic emptying of the recycle folders is off.", "ok")
+    return redirect(url_for("web.settings"))
+
+
+@bp.post("/settings/recycle/empty")
+@login_required
+def settings_recycle_empty():
+    removed, freed = recycle.purge()
+    events.log_event(None, "info", f"Recycle folders emptied from the web page: {removed} file(s), {freed / 1e6:.1f} MB")
+    flash(f"Recycle folders emptied: {removed} file(s), {freed / 1e6:.1f} MB freed.", "ok")
+    return redirect(url_for("web.settings"))
 
 
 # --- office users -----------------------------------------------------------

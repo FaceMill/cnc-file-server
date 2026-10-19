@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+<h1>Settings</h1>
+
+<div class="card">
+  <h2>Recycle bin</h2>
+  <p class="muted">Files deleted from the office share, a machine's share, or this admin site are moved to hidden
+    <span class="mono">.recycle</span> folders (one for the office share and one per machine) instead of being deleted.</p>
+  <table style="max-width:520px">
+    <tr><th>Files in recycle folders</th><td>{{ '{:,}'.format(recycle_stats.files) }}</td></tr>
+    <tr><th>Space used</th><td>{{ '%.1f' | format(recycle_stats.bytes / 1e6) }} MB</td></tr>
+    <tr><th>Oldest</th><td>{% if recycle_stats.oldest_days is not none %}{{ recycle_stats.oldest_days | round(0) | int }} day(s) ago{% else %}&ndash;{% endif %}</td></tr>
+  </table>
+
+  <form method="post" action="{{ url_for('web.settings_recycle') }}">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label for="retention_days">Empty automatically: delete files that have been in a recycle folder for more than</label>
+    <div class="actions" style="margin-top:0">
+      <input type="text" id="retention_days" name="retention_days" value="{{ site.recycle.retention_days }}"
+             inputmode="numeric" style="max-width:90px"> days
+      <button>Save</button>
+    </div>
+    <div class="hint">Checked every few hours. Counted from when each file was deleted. 0 = never empty automatically.</div>
+  </form>
+
+  <form method="post" action="{{ url_for('web.settings_recycle_empty') }}" class="actions"
+        data-msg="Permanently delete all {{ recycle_stats.files }} file(s) in the recycle folders? This can't be undone."
+        onsubmit="return confirm(this.dataset.msg)">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button class="danger" {{ 'disabled' if not recycle_stats.files }}>Empty recycle folders now</button>
+  </form>
+</div>
+{% endblock %}

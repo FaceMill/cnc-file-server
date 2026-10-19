@@ -28,7 +28,7 @@ with sync_playwright() as p:
 
     for path in ["/", "/machines", "/machines/new", "/users", "/network", "/logs", "/logs?c=dnc", "/account",
                  "/machines/haas1", "/machines/haas1/edit", "/machines/siemens1", "/machines/fanuc1", "/machines/fanuc3",
-                 "/machines/fadal1", "/machines/fanuc5"]:
+                 "/machines/fadal1", "/machines/fanuc5", "/settings"]:
         page.goto(BASE + path)
         check(page.locator("h1").count() >= 1 and "Internal Server Error" not in page.content(), f"renders {path}")
 

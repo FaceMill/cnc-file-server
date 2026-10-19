@@ -20,6 +20,7 @@ tests/fullstack.sh --clean     # remove the simulated Pi
 | `test_serial_tty.py` | Serial DNC over a real tty (the USB adapter code path), 1 MB drip-feed, concurrency |
 | `test_focas_admin.py` | FOCAS pages and actions against a simulated bridge |
 | `test_focas_bridge.py` | The 32-bit FOCAS bridge with FANUC's real library |
+| `test_recycle.py` | Recycle folders: retention setting, emptying by age (counted from deletion), Empty now, symlink safety |
 | `test_review_fixes.py` | One regression check per fix from the security/correctness review |
 | `fuzz_render.py` | Random and hostile configs; accepted ones must pass `nft -c` and `testparm` |
 | `test_browser.py` | Chromium (Playwright): pages, JavaScript, upload/delete |

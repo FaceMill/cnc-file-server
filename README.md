@@ -81,6 +81,7 @@ FANUC never receives more than 10 characters after it sends XOFF (alarm 087).
 | **Office users** | Logins for the office SMB3 share (`\\<pi>\CNC`). Passwords are stored only as hashes. |
 | **Network** | Office side: DHCP or static, allowed office subnets (firewall). Changes **roll back automatically after 2 minutes** unless confirmed, so a mistake can't lock you out. CNC side: the Pi's address and every machine's IP. SMB workgroup. |
 | **Logs** | DNC activity (requests, sends, receives, port errors) and the last lines of every service's log. |
+| **Settings** | Recycle bin: how many files and how much space the recycle folders hold, **automatic emptying** of files deleted more than N days ago (default **60**, 0 = off, checked every few hours), and **Empty now**. |
 | **Account** | Change the admin password. |
 
 [Cockpit](https://cockpit-project.org/) at `https://<pi-hostname>:9090` (Pi login)
@@ -138,7 +139,8 @@ using its setup sheet ([docs/cnc-client-setup.md](docs/cnc-client-setup.md)).
 ## Day-to-day use
 
 - **Office:** map `\\<pi-hostname>\CNC` with an office user. Each machine has a folder;
-  drop programs in, pick up what machines saved. Deleted files go to a hidden `.recycle` folder.
+  drop programs in, pick up what machines saved. Deleted files go to a hidden `.recycle` folder
+  and are removed for good after 60 days (adjustable on the Settings page).
 - **SMB / FTP machines:** load and save programs from the control's network device as usual.
 - **Serial machines:** punch a call program from the control:
   ```

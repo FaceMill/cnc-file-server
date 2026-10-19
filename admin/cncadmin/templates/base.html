@@ -54,6 +54,7 @@
     <a href="{{ url_for('web.users') }}" class="{{ 'active' if ep.startswith('web.user') }}">Office users</a>
     <a href="{{ url_for('web.network') }}" class="{{ 'active' if ep.startswith('web.network') }}">Network</a>
     <a href="{{ url_for('web.logs') }}" class="{{ 'active' if ep == 'web.logs' }}">Logs</a>
+    <a href="{{ url_for('web.settings') }}" class="{{ 'active' if ep.startswith('web.settings') }}">Settings</a>
     <a href="{{ url_for('web.account') }}" class="{{ 'active' if ep == 'web.account' }}">Account</a>
   </nav>
   <form method="post" action="{{ url_for('web.logout') }}">

@@ -77,6 +77,11 @@ FOCAS_DEFAULTS = {
 }
 
 
+# Deleted files (Samba and the admin page) go to .recycle folders; files older than
+# this many days there are removed for good. 0 = never empty automatically.
+RECYCLE_DEFAULTS = {"retention_days": 60}
+
+
 def normalize_focas(f):
     return {**FOCAS_DEFAULTS, **{k: v for k, v in (f or {}).items() if k in FOCAS_DEFAULTS}}
 
@@ -134,6 +139,7 @@ def default_site(office_subnet, office_if="eth0", cnc_if="eth1"):
              "ip": "192.168.50.13", "password": gen_password()},
         ],
         "office_users": [],
+        "recycle": dict(RECYCLE_DEFAULTS),
     }
 
 
@@ -149,6 +155,7 @@ def load():
             m["serial"] = normalize_serial(m["serial"])
         if "focas" in m:
             m["focas"] = normalize_focas(m["focas"])
+    site["recycle"] = {**RECYCLE_DEFAULTS, **site.get("recycle", {})}  # configs from before this setting
     return site
 
 
@@ -316,6 +323,10 @@ def validate(site):
 
         if proto in ("smb", "ftp") and not PASSWORD_RE.fullmatch(m["password"]):
             raise ValueError(f"{label}: password must be 1-14 letters, digits or symbols (no spaces or accents)")
+
+    days = site.get("recycle", {}).get("retention_days")
+    if not isinstance(days, int) or isinstance(days, bool) or not 0 <= days <= 3650:
+        raise ValueError("Recycle bin: keep files for 0 to 3650 days (0 = never empty automatically)")
 
     for u in site["office_users"]:
         if not USER_NAME_RE.fullmatch(u["name"]):
