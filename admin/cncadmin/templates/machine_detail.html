@@ -4,6 +4,7 @@
 {% from "_macros.html" import delete_button, upload_form with context %}
 {% set t = m.type %}
 {% set s = m.serial if proto == 'serial' else {} %}
+{% if look.logo %}<img class="print-only" src="{{ url_for('web.branding_logo', v=look.logo_version) }}" alt="" style="max-height:60px;max-width:220px;margin-bottom:10px">{% endif %}
 <h1>{{ m.label }} <span class="muted" style="font-weight:400">· {{ machine_types[t].label }}</span></h1>
 
 {% if proto == 'serial' %}

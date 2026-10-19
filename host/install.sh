@@ -11,7 +11,7 @@ set -a; . ./.env; set +a
 
 apt-get update
 apt-get -y full-upgrade
-apt-get install -y nftables cockpit unattended-upgrades restic curl
+apt-get install -y nftables cockpit unattended-upgrades restic curl smartmontools
 # brltty claims CH340 USB serial adapters, and ModemManager sends "AT" probes down new
 # serial ports (garbage at the CNC). Neither is wanted on a DNC server.
 apt-get purge -y brltty modemmanager 2>/dev/null || true
@@ -47,7 +47,7 @@ chmod 0700 config generated
 ./host/setup-network.sh
 
 # Site config, generated files, admin password
-docker compose build
+docker compose build --pull
 if [ ! -f config/site.json ]; then
     docker compose run --rm --no-deps cnc-admin python -m cncadmin.cli init
 fi
@@ -67,7 +67,19 @@ nft -f /etc/nftables.conf
 
 docker compose up -d
 
+# Backups (nightly; reports "not configured" until host/setup-backup.sh is run) and
+# the host health snapshot (every 5 minutes) shown on the admin page.
+for unit in cnc-backup.service cnc-backup.timer cnc-health.service cnc-health.timer; do
+    sed "s|@PROJECT_DIR@|$PROJECT_DIR|g" "host/systemd/$unit" > "/etc/systemd/system/$unit"
+done
+systemctl daemon-reload
+systemctl enable --now cnc-health.timer cnc-backup.timer
+python3 host/health.py || true
+host/backup.sh || true
+
 echo
 echo "Done. Admin page: https://$OFFICE_HOSTNAME:8443  (user: admin)"
 echo "      Cockpit:    https://$OFFICE_HOSTNAME:9090  (Pi login)"
 echo "      Portainer is off; see docker-compose.yml to enable it behind an SSH tunnel."
+echo
+echo "Next: set up backups with  sudo $PROJECT_DIR/host/setup-backup.sh"

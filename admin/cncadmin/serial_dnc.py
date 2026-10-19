@@ -151,6 +151,7 @@ class MachineWorker(threading.Thread):
 
     def _listen(self):
         buf = bytearray()
+        percents = 0  # running count: re-scanning an 8 MB buffer per read would hog the CPU
         last_rx = 0.0
         self._idle()
         while not self._stop_evt.is_set():
@@ -161,6 +162,7 @@ class MachineWorker(threading.Thread):
             else:
                 interrupted_by = self._send_job(path, delay, source)
                 buf.clear()
+                percents = 0
                 self._idle()
                 if interrupted_by:
                     self._handle_received(interrupted_by)
@@ -175,17 +177,21 @@ class MachineWorker(threading.Thread):
                 if len(buf) > MAX_PUNCH:
                     self._event("error", f"Discarded {len(buf)} bytes received without an end-of-program %")
                     buf.clear()
+                    percents = 0
                     self._idle()
                     continue
                 self.state, self.detail = "receiving", f"{len(buf)} bytes"
                 # A complete punch is wrapped in % ... %
-                if buf.count(b"%") >= 2:
+                percents += chunk.count(b"%")
+                if percents >= 2:
                     self._handle_received(bytes(buf))
                     buf.clear()
+                    percents = 0
                     self._idle()
             elif buf and time.time() - last_rx >= float(self.m["receive_timeout"]):
                 self._handle_received(bytes(buf))
                 buf.clear()
+                percents = 0
                 self._idle()
 
     def _handle_received(self, data: bytes):
@@ -241,6 +247,7 @@ class MachineWorker(threading.Thread):
 
         self.ser.reset_input_buffer()
         self._rx = bytearray()
+        self._rx_percents = 0
         self._rx_last = 0.0
         self._paused = False
         self.sent, self.total = 0, len(data)
@@ -323,14 +330,17 @@ class MachineWorker(threading.Thread):
         if incoming:
             self._rx += incoming
             self._rx_last = now
+            self._rx_percents += incoming.count(b"%")
             if len(self._rx) > MAX_PUNCH:
                 self._rx.clear()
-            if self._rx.count(b"%") >= 2:
+                self._rx_percents = 0
+            if self._rx_percents >= 2:
                 raise Interrupted
         elif self._rx and now - self._rx_last >= float(self.m["receive_timeout"]):
             if b"%" in self._rx:
                 raise Interrupted
             self._rx.clear()  # stray noise, not a punch
+            self._rx_percents = 0
 
     def _wait_clear_to_send(self):
         fc = self.m["flow_control"]

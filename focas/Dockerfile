@@ -16,6 +16,10 @@ RUN set -e; \
     fi; \
     rm -rf /tmp/lib; ldconfig
 
+# Debian security updates; pip/setuptools aren't needed at runtime (the bridge uses only the stdlib).
+RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/* \
+ && pip uninstall -y setuptools wheel pip
+
 WORKDIR /app
 COPY focas.py bridge.py ./
 ENV PYTHONUNBUFFERED=1

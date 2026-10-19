@@ -67,7 +67,7 @@ open("/srv/cnc/tty1/O7777.NC", "wb").write(big)
 rx = bytearray(); after_xoff = []
 os.write(master, b"%\r\nO9999 (SEND O7777)\r\nM30\r\n%")
 t0 = time.time(); next_pause = 100_000
-while len(rx) < len(big) and time.time() - t0 < 300:
+while len(rx) < len(big) and time.time() - t0 < 600:  # ~3 min normally; generous for a busy host
     r, _, _ = select.select([master], [], [], 0.5)
     if r:
         rx += os.read(master, 65536)

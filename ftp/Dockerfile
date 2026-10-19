@@ -1,6 +1,6 @@
 FROM debian:bookworm-slim
 
-RUN apt-get update \
+RUN apt-get update && apt-get upgrade -y \
  && apt-get install -y --no-install-recommends vsftpd procps \
  && rm -rf /var/lib/apt/lists/* \
  && echo /usr/sbin/nologin >> /etc/shells

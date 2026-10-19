@@ -3,7 +3,7 @@ import logging
 
 from flask import Flask
 
-from . import config, recycle, serial_dnc
+from . import config, monitor, recycle, serial_dnc
 from .network import office_change
 
 
@@ -25,4 +25,5 @@ def create_app():
     if config.exists():
         serial_dnc.manager.sync(config.load())
     recycle.start_scheduler()
+    monitor.start()
     return app

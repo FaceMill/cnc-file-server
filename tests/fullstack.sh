@@ -25,9 +25,9 @@ clean() {
 if [ "${1:-}" = "--clean" ]; then clean; echo "cleaned"; exit 0; fi
 
 echo "== Build images"
-for i in admin samba ftp; do docker build -q --network host -t "local/cnc-$i:1.0" "$PROJECT/$i" >/dev/null || exit 1; done
-docker build -q --network host --platform linux/arm/v7 -t local/cnc-focas:1.0 "$PROJECT/focas" >/dev/null || exit 1
-docker pull -q caddy:2.8.4 >/dev/null
+for i in admin samba ftp; do docker build -q --pull --network host -t "local/cnc-$i:1.0" "$PROJECT/$i" >/dev/null || exit 1; done
+docker build -q --pull --network host --platform linux/arm/v7 -t local/cnc-focas:1.0 "$PROJECT/focas" >/dev/null || exit 1
+docker pull -q caddy:2.11.7 >/dev/null
 docker build -q -t local/netclient - >/dev/null <<'EOF' || exit 1
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends smbclient python3 curl iproute2 netcat-openbsd ca-certificates && rm -rf /var/lib/apt/lists/*
@@ -41,8 +41,8 @@ docker run -d --name pi --hostname cnc-files --privileged --network pi-office --
     docker:27-dind --iptables=false --ip6tables=false --ip-forward=false >/dev/null
 docker network connect --ip 192.168.50.1 pi-cnc pi
 for _ in $(seq 1 30); do pi 'docker info' >/dev/null 2>&1 && break; sleep 2; done
-pi 'apk add -q nftables >/dev/null'
-docker save local/cnc-admin:1.0 local/cnc-samba:1.0 local/cnc-ftp:1.0 local/cnc-focas:1.0 caddy:2.8.4 | docker exec -i pi docker load >/dev/null
+pi 'apk add -q nftables restic bash python3 >/dev/null'   # before the firewall: it cuts the simulation's DNS
+docker save local/cnc-admin:1.0 local/cnc-samba:1.0 local/cnc-ftp:1.0 local/cnc-focas:1.0 caddy:2.11.7 | docker exec -i pi docker load >/dev/null
 pi 'mkdir -p /opt/cnc-server'
 tar -C "$PROJECT" --exclude=.vscode --exclude=tests --exclude=config --exclude=generated --exclude=data -cf - . | docker exec -i pi tar -C /opt/cnc-server -xf -
 
@@ -146,6 +146,24 @@ echo "== Resilience"
 pi 'docker restart samba-cnc >/dev/null'; sleep 4
 t "machine logs in after samba-cnc restart" docker exec haas1 smbclient //192.168.50.1/haas1 -U "haas1%$H1" -m NT1 --option='client min protocol=NT1' -c ls
 t "fallback firewall loads if the generated one is broken" pi 'cp /opt/cnc-server/generated/nftables.conf /tmp/nft.bak && echo garbage > /opt/cnc-server/generated/nftables.conf && { nft -f /etc/nftables.conf 2>/dev/null || nft -f /opt/cnc-server/host/nftables-fallback.conf; } && nft list ruleset | grep -q "tcp dport 22 accept"; rc=$?; cp /tmp/nft.bak /opt/cnc-server/generated/nftables.conf && nft -f /etc/nftables.conf; exit $rc'
+
+echo "== Disaster recovery (backup -> lose everything -> restore.sh all)"
+pi 'head -c 24 /dev/urandom | base64 > /etc/cnc-backup.pass && printf "RESTIC_REPOSITORY=/backup/repo\nRESTIC_PASSWORD_FILE=/etc/cnc-backup.pass\n" > /etc/cnc-backup.env'
+# As host/setup-backup.sh does (it also enables a systemd timer, which this simulated Pi doesn't have)
+pi 'mkdir -p /backup/repo && . /etc/cnc-backup.env && export RESTIC_REPOSITORY RESTIC_PASSWORD_FILE && restic init >/dev/null && touch /backup/repo/.cnc-backup-repository'
+t "nightly backup script succeeds" pi '/opt/cnc-server/host/backup.sh >/dev/null 2>&1 && grep -q "\"ok\"" /opt/cnc-server/config/backup-status.json'
+t "Status page shows the backup" sh -c "$A get path=/ n=200000 | grep -q 'last backup'"
+lose_everything() {
+    pi 'cd /opt/cnc-server && docker compose down >/dev/null 2>&1 && find /srv/cnc /opt/cnc-server/config -mindepth 1 -delete && [ -z "$(ls -A /srv/cnc)" ] && [ -z "$(ls -A /opt/cnc-server/config)" ]'
+}
+t "programs and configuration wiped" lose_everything
+t "restore.sh all brings everything back" pi '/opt/cnc-server/host/restore.sh all >/tmp/restore.log 2>&1'
+sleep 10
+t "haas1 logs in with its original password and sees its programs" sh -c "docker exec haas1 smbclient //192.168.50.1/haas1 -U 'haas1%$H1' -m NT1 --option='client min protocol=NT1' -c ls | grep -q O1001.NC"
+t "office user works again" sh -c "docker exec office-pc $OFF -c 'cd fanuc1; ls' | grep -q O3001.NC"
+t "admin login with the original password" sh -c "docker exec office-pc rm -f /tmp/cookies; $A login password=fullstack-pass-1 | grep -q '\[\]'"
+t "restored files keep their owner (cncfiles)" pi '[ "$(stat -c %u /srv/cnc/haas1/O1001.NC)" = 2000 ]'
+t "firewall reloaded from the restored configuration" pi 'nft list ruleset | grep -q "192.168.50.21"'
 
 echo
 echo "Full stack: $PASS passed, $FAIL failed"

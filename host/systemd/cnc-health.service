@@ -1,0 +1,7 @@
+[Unit]
+Description=CNC file server: host health snapshot (SSD, temperature, time, UPS)
+
+[Service]
+Type=oneshot
+Environment=PROJECT_DIR=@PROJECT_DIR@
+ExecStart=/usr/bin/python3 @PROJECT_DIR@/host/health.py

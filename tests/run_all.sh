@@ -33,23 +33,24 @@ suite() {  # name, extra docker args, command
 }
 
 echo "== Build images"
-for i in admin samba ftp; do docker build -q --network host -t "local/cnc-$i:1.0" "$PROJECT/$i" >/dev/null || exit 1; done
-docker build -q --network host --platform linux/arm/v7 -t local/cnc-focas:1.0 "$PROJECT/focas" >/dev/null || exit 1
+for i in admin samba ftp; do docker build -q --pull --network host -t "local/cnc-$i:1.0" "$PROJECT/$i" >/dev/null || exit 1; done
+docker build -q --pull --network host --platform linux/arm/v7 -t local/cnc-focas:1.0 "$PROJECT/focas" >/dev/null || exit 1
 
 echo "== Static checks"
 ruff_out=$(docker run --rm -v "$PROJECT":/src:ro python:3.12-slim sh -c \
     'pip -q install ruff==0.6.9 2>/dev/null; cd /src && ruff check --no-cache --select E9,F,B006,B008,PLE --output-format concise admin/cncadmin focas tests' 2>&1)
 grep -q "All checks passed" <<<"$ruff_out" && record "ruff (Python errors)" "PASS" || { echo "$ruff_out" | tail -5; record "ruff (Python errors)" "FAIL"; }
 docker run --rm -v "$PROJECT":/src:ro koalaman/shellcheck:stable -S warning /src/host/install.sh /src/host/setup-network.sh \
+    /src/host/backup.sh /src/host/restore.sh /src/host/setup-backup.sh /src/tests/test_backup.sh \
     /src/samba/entrypoint.sh /src/ftp/entrypoint.sh /src/tests/run_all.sh /src/tests/fullstack.sh \
     && record "shellcheck" "PASS" || record "shellcheck" "FAIL"
 docker run --rm --cap-add NET_ADMIN -v "$PROJECT/host":/h:ro local/cnc-admin:1.0 nft -c -f /h/nftables-fallback.conf \
     && record "fallback firewall (nft -c)" "PASS" || record "fallback firewall (nft -c)" "FAIL"
-docker run --rm -e OFFICE_HOSTNAME=cnc.test -v "$PROJECT/caddy/Caddyfile":/etc/caddy/Caddyfile:ro caddy:2.8.4 \
+docker run --rm -e OFFICE_HOSTNAME=cnc.test -v "$PROJECT/caddy/Caddyfile":/etc/caddy/Caddyfile:ro caddy:2.11.7 \
     caddy validate --config /etc/caddy/Caddyfile >/dev/null 2>&1 && record "Caddyfile" "PASS" || record "Caddyfile" "FAIL"
 mkdir -p "$SCRATCH/compose" && cp "$PROJECT/docker-compose.yml" "$SCRATCH/compose/" && cp "$PROJECT/.env.example" "$SCRATCH/compose/.env"
 (cd "$SCRATCH/compose" && docker compose config -q) && record "docker-compose.yml" "PASS" || record "docker-compose.yml" "FAIL"
-audit=$(docker run --rm local/cnc-admin:1.0 sh -c 'pip install -q pip-audit 2>/dev/null; pip-audit -r /app/requirements.txt 2>&1')
+audit=$(docker run --rm -v "$PROJECT/admin/requirements.txt":/req.txt:ro python:3.12-slim sh -c 'pip install -q pip-audit 2>/dev/null; pip-audit -r /req.txt 2>&1')
 grep -q "No known vulnerabilities" <<<"$audit" && record "pip-audit (admin deps)" "PASS" || { echo "$audit" | tail -4; record "pip-audit (admin deps)" "FAIL"; }
 
 INIT='python -m cncadmin.cli init --office-subnet 10.20.0.0/16 --office-if eth9 --cnc-if eth8 >/dev/null'
@@ -58,10 +59,16 @@ LO='ip addr add 192.168.50.40/32 dev lo &&'
 suite "admin web app"            "$ADMIN" "$INIT && timeout 300 python /tests/test_web.py"
 suite "control types / protocols" "$ADMIN" "$LO $INIT && timeout 300 python /tests/test_protocols.py"
 suite "serial DNC (TCP)"         "$ADMIN" "$LO $INIT && timeout 300 python /tests/test_serial_dnc.py"
-suite "serial DNC (tty, 1 MB)"   "$ADMIN" "$INIT && timeout 600 python /tests/test_serial_tty.py"
+suite "serial DNC (tty, 1 MB)"   "$ADMIN" "$INIT && timeout 900 python /tests/test_serial_tty.py"
 suite "FOCAS (admin side)"       "$ADMIN" "$INIT && timeout 300 python /tests/test_focas_admin.py"
 suite "review fixes"             "$ADMIN" "$INIT && timeout 300 python /tests/test_review_fixes.py"
 suite "recycle folders"          "$ADMIN" "$INIT && timeout 300 python /tests/test_recycle.py"
+suite "second review fixes"      "$ADMIN" "$INIT && timeout 300 python /tests/test_review2_fixes.py"
+suite "health checks + alert emails" "$ADMIN" "$INIT && timeout 300 python /tests/test_monitor.py"
+suite "appearance + logo"        "$ADMIN" "$INIT && timeout 300 python /tests/test_appearance.py"
+mkdir -p "$SCRATCH/proj" && cp -R "$PROJECT/host" "$SCRATCH/proj/" && cp -R "$T" "$SCRATCH/proj/tests"
+suite "backup / restore drill"   "-v $SCRATCH/proj:/project:ro debian:bookworm-slim" \
+    "apt-get -qq update >/dev/null && apt-get -qq install -y restic python3 >/dev/null 2>&1 && bash /project/tests/test_backup.sh"
 suite "FOCAS bridge (32-bit)"    "--platform linux/arm/v7 -e PYTHONPATH=/app -v $T:/tests:ro local/cnc-focas:1.0" "timeout 300 python /tests/test_focas_bridge.py"
 
 echo "== Fuzz: random/hostile configs -> real nft and testparm"

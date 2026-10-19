@@ -27,6 +27,7 @@ class OfficeChange:
         self.pending = None  # {"old": office, "new": office, "deadline": epoch}
         self.last_error = None
         self._timer = None
+        self._generation = 0  # bumped by every start/clear, so stale apply threads can tell
 
     def status(self):
         if not self.pending:
@@ -44,8 +45,11 @@ class OfficeChange:
             return
         log.warning("Reverting unconfirmed office network change from a previous run")
         self.pending = pending
-        self.revert("A network change was left unconfirmed when the admin service restarted; "
-                    "previous settings restored.")
+        # In the background: nmcli and container restarts can take longer than the web
+        # server allows for starting up.
+        threading.Thread(target=self.revert, daemon=True, args=(
+            "A network change was left unconfirmed when the admin service restarted; "
+            "previous settings restored.",)).start()
 
     def start(self, new_office):
         with config.lock:
@@ -58,19 +62,25 @@ class OfficeChange:
             # The confirmation countdown starts once the change is actually applied.
             self.pending = {"old": site["office"], "new": trial["office"], "deadline": None}
             self.last_error = None
+            self._generation += 1
             config._write_private(PENDING_FILE, json.dumps(self.pending))
-        threading.Thread(target=self._apply_new, daemon=True).start()
+            generation = self._generation
+        threading.Thread(target=self._apply_new, args=(generation,), daemon=True).start()
 
-    def _apply_new(self):
+    def _apply_new(self, generation):
         time.sleep(APPLY_DELAY_SECONDS)
         try:
-            self._apply(self.pending["new"])
+            with config.lock:
+                # Reverted (or replaced) while waiting for the lock: don't apply stale settings.
+                if not self.pending or self._generation != generation:
+                    return
+                self._apply(self.pending["new"])
         except Exception as e:
             log.exception("Applying office network change failed")
             self.revert(f"Applying the change failed ({e}); previous settings restored.")
             return
         with config.lock:
-            if not self.pending:
+            if not self.pending or self._generation != generation:
                 return
             self.pending["deadline"] = time.time() + CONFIRM_SECONDS
             config._write_private(PENDING_FILE, json.dumps(self.pending))
@@ -128,6 +138,7 @@ class OfficeChange:
     def _clear(self):
         self.pending = None
         self._timer = None
+        self._generation += 1
         try:
             os.remove(PENDING_FILE)
         except FileNotFoundError:

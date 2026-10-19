@@ -70,6 +70,11 @@ def purge(older_than_days=None, now=None):
         for path, st in _walk_files(d):
             if cutoff is not None and st.st_ctime > cutoff:
                 continue
+            # Belt and braces: the folder holding it must really be inside this .recycle folder.
+            parent, root = os.path.realpath(os.path.dirname(path)), os.path.realpath(d)
+            if parent != root and not parent.startswith(root + os.sep):
+                log.warning("Skipping %s: outside %s", path, d)
+                continue
             try:
                 os.unlink(path)  # unlinks symlinks themselves, never their targets
             except OSError as e:

@@ -143,7 +143,8 @@ and reached over an SSH tunnel (see `docker-compose.yml`).
   folders (one for the office share, one per machine). Files deleted more than **60 days**
   ago are removed automatically (Settings page: adjustable, 0 = off; "Empty now" button).
   The age counts from deletion: moving a file into the recycle folder sets its change time.
-- **Nightly backups** off the Pi (to do: restic or rsync to a network file server).
+- **Nightly backups** off the Pi with restic (host/backup.sh, cnc-backup.timer), checked weekly,
+  restore drill automated (tests/test_backup.sh and the full-stack test).
 - **Pinned versions**: Debian Bookworm Samba 4.17 is pinned. SMB1 is deprecated
   upstream, so Samba is only upgraded on purpose, after testing.
 - Oplocks are disabled on both sides, so the two Samba instances never cache files the
@@ -156,15 +157,17 @@ yet.** Run it all again with `tests/run_all.sh --fullstack` (see `tests/README.m
 
 | Suite | What it covers |
 |---|---|
-| Full stack (simulated Pi), 42 checks | Docker-in-Docker "Pi" with an office and a CNC network, the real compose stack and generated firewall, simulated office PCs, Haas, FANUC FTP, a serial device server and a rogue device. Isolation (no forwarding, closed ports, destination checks), SMB3/SMB1/FTP file flow in both directions, serial punch to office, FOCAS bridge path, restarts, fallback firewall |
+| Full stack (simulated Pi), 53 checks | Docker-in-Docker "Pi" with an office and a CNC network, the real compose stack and generated firewall, simulated office PCs, Haas, FANUC FTP, a serial device server and a rogue device. Isolation (no forwarding, closed ports, destination checks), SMB3/SMB1/FTP file flow in both directions, serial punch to office, FOCAS bridge path, restarts, fallback firewall |
 | Admin web app, 49 | Login, CSRF, machines, users, validation, CNC renumbering, office change with rollback |
 | Control types, 41 | Every control type renders, generates the right shares/users/firewall |
 | Serial DNC over TCP, 32 | `(SEND ...)` requests, byte-exact sends, ≤10 chars after XOFF, punches saved, interrupts, cancel, live settings |
 | Serial DNC over a tty, 8 | The USB-adapter code path, exclusive lock, 1.16 MB drip-feed byte-exact through XOFF pauses, adapter unplugged, 40 concurrent admin edits |
 | FOCAS bridge (real 32-bit library), FOCAS admin side | Library loads, FANUC error codes, token, input checks, replace restores the old program on failure |
-| Review fixes, 40 | One regression check per fix from the security and correctness reviews |
+| Review fixes, 40 + 20 | One regression check per fix from the two security and correctness reviews |
+| Recycle, health/alerts, appearance, 21 / 33 / 33 | Retention purge never follows symlinks; host health and email alerts; themes and logo validation |
+| Backup / restore drill, 24 | Real `backup.sh` / `restore.sh` with restic: wipe everything, restore, compare every file |
 | Fuzzing | ~1500 random/hostile configs; everything accepted must pass real `nft -c` and `testparm` with no injected settings |
-| Browser (Chromium), 34 | Every page renders, form fields follow the control type, live DNC status and progress, FOCAS table, upload/delete, no JavaScript errors |
+| Browser (Chromium), 36 | Every page renders, form fields follow the control type, live DNC status and progress, FOCAS table, upload/delete, no JavaScript errors |
 | Static | ruff, shellcheck, Caddyfile and compose validation, pip-audit |
 
 ### Independent review (security and correctness)
@@ -190,6 +193,48 @@ each has a regression test:
 - **Web:** XSS in confirm dialogs, an open redirect after login, and no login rate limit.
 - **Build:** images couldn't be built on the Pi (Docker NAT is disabled, so builds now use the host network).
 - **Flask:** upgraded to 3.1.3 for a published vulnerability.
+
+A second review, after backups, health alerts, themes and logo upload were added, found
+15 more issues. All fixed, with regression checks (`tests/test_review2_fixes.py` and the
+suites for each feature). The main ones:
+- **FOCAS:** program numbers outside 1-9999 wrapped in the library's 16-bit field
+  (O66770 would have deleted O1234). Now refused by both the admin page and the bridge.
+- **Office network rollback:** recovering an unconfirmed change at start-up blocked the admin
+  page; pressing Revert while the change was still being applied let the new settings win.
+- **CNC network:** a half-failed address change left the Pi and the config disagreeing; the
+  old address is now restored.
+- **Machine folders:** a file or symlink where `received/` should be broke every save (and a
+  symlink could have pointed the ownership fix elsewhere). It is now moved aside and the folder
+  recreated, without following links.
+- **Recycle:** deleting the same file name twice overwrote the first recycled copy.
+- **Alerts:** a damaged alert-state file stopped all alert emails.
+- **Logo upload:** only real PNG/JPEG (checked by content, not name), 1 MB limit, served with
+  `nosniff` and a locked-down content policy so an uploaded file can't run script.
+- Checked and **not** a problem: Caddy's on-demand TLS can't be triggered from outside
+  (tested with arbitrary SNI names).
+
+### Container vulnerability scan (Trivy)
+
+All images were scanned for HIGH and CRITICAL CVEs. Fixes applied:
+- **Caddy:** upgraded 2.8.4 → 2.11.7. The old version had 93 findings with fixes, several in Caddy itself.
+- **Fresh bases:** every image is now built on freshly pulled base images with Debian security updates applied.
+- **Python packages:** `urllib3` pinned to 2.8.0.
+- **Build tools removed:** `pip` and `setuptools` are no longer in the running images, so their bundled
+  libraries are gone too.
+
+Result: **no HIGH or CRITICAL finding with an available fix** in any of our images. Remaining:
+- Caddy 2.11.7 has 4 HIGH findings in its Go runtime, fixed only in a future Caddy release.
+- Debian bookworm issues with no fix ("will not fix", "fix deferred" or unfixed). The critical ones
+  don't apply here:
+  - zlib's minizip isn't used.
+  - The lmdb CVEs are in py-lmdb, not used.
+  - SQLite overflow needs attacker-supplied SQL; the event log uses parameterised queries.
+  - glib's D-Bus code is only used by nmcli talking to the Pi's own NetworkManager.
+
+Rebuild images regularly (`docker compose build --pull`) and rescan:
+```bash
+docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image --severity HIGH,CRITICAL local/cnc-admin:1.0
+```
 
 ## Hardware (bill of materials)
 
@@ -249,7 +294,6 @@ each has a regression test:
   `admin/cncadmin/conf_templates/smb-cnc.conf.j2` as a last resort.
 - **8.3 filenames** on older controls: name mangling is on (the default). Agree on a
   naming convention such as `O01234.NC`.
-- **Backups**: script still to write once IT names a backup target.
 - **Serial speed at high baud:** to stay within FANUC's XOFF limit the engine writes 4 bytes
   at a time; at 115200 baud a drip-feed runs at about 60% of line speed (fine at 4800/9600).
 - **NTLMv1 on the CNC network** (needed by Haas Classic and XP) lets anyone who can capture traffic

@@ -120,13 +120,19 @@ def ensure_machine_dir(name):
 
 
 def make_shared_dir(path):
+    """Make sure `path` is a real directory owned like the rest of /srv/cnc. Anything else
+    in its place (a file, or a symlink an SMB/FTP user made) is moved aside, not followed."""
+    if os.path.lexists(path) and (os.path.islink(path) or not os.path.isdir(path)):
+        aside = f"{path}.not-a-folder-{datetime.datetime.now():%Y%m%d-%H%M%S}"
+        os.rename(path, aside)
+        log.warning("%s was not a folder; moved it to %s", path, aside)
     if not os.path.isdir(path):
         os.makedirs(path, exist_ok=True)
         os.chmod(path, 0o770)
     if os.geteuid() == 0:
-        st = os.stat(path)
+        st = os.lstat(path)
         if (st.st_uid, st.st_gid) != (CNC_UID, CNC_GID):
-            os.chown(path, CNC_UID, CNC_GID)
+            os.chown(path, CNC_UID, CNC_GID, follow_symlinks=False)
 
 
 def write_shared_file(path, data):
@@ -134,9 +140,9 @@ def write_shared_file(path, data):
     make_shared_dir(os.path.dirname(path))
     with open(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o664), "wb") as f:
         f.write(data)
-    os.chmod(path, 0o664)
+    os.chmod(path, 0o664)  # just created with O_EXCL|O_NOFOLLOW, so a regular file
     if os.geteuid() == 0:
-        os.chown(path, CNC_UID, CNC_GID)
+        os.chown(path, CNC_UID, CNC_GID, follow_symlinks=False)
 
 
 def archive_machine_dir(name):

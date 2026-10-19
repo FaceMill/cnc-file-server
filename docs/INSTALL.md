@@ -18,6 +18,9 @@ install, including the bench test. Steps marked **(IT)** need your IT department
 - [12. Connect the machines](#12-connect-the-machines)
 - [13. Optional extras](#13-optional-extras)
 - [14. Maintenance](#14-maintenance)
+- [15. Backups](#15-backups)
+- [16. Alerts, time and UPS](#16-alerts-time-and-ups)
+- [17. Disaster recovery (the SSD or Pi died)](#17-disaster-recovery-the-ssd-or-pi-died)
 - [Ports for IT](#ports-for-it)
 
 ---
@@ -261,7 +264,7 @@ sudo docker compose up -d
 Rebuild every month or two, even with no code changes, to pick up Debian security fixes
 in the images. The OS updates itself.
 
-**Back up** `/srv/cnc/` and `/opt/cnc-server/config/` (see the README).
+**Back up:** see [15. Backups](#15-backups). For staff, print [RUNBOOK.md](RUNBOOK.md).
 
 **Reset the admin password:**
 ```bash
@@ -273,6 +276,121 @@ sudo docker compose run --rm --no-deps cnc-admin python -m cncadmin.cli set-admi
 
 **Move the Pi to a new office address:** change the DHCP reservation (IT) and reboot. Or use
 the Network page, which keeps the 2-minute confirm and rollback.
+
+## 15. Backups
+
+Nightly backups of every program (`/srv/cnc`) and the whole configuration
+(`config/`, `.env`) with [restic](https://restic.net). Backups are encrypted,
+deduplicated, and checked once a week. The last 3 runs are kept, plus 14 daily,
+8 weekly and 12 monthly copies.
+
+1. Choose a destination off the Pi:
+   - a USB disk mounted at, for example, `/mnt/backup`;
+   - an SFTP server: set up an SSH key for root first;
+   - a restic REST server.
+
+   Ask IT for space on a file server if possible.
+2. Run:
+   ```bash
+   sudo /opt/cnc-server/host/setup-backup.sh
+   ```
+   It asks for the destination and creates a random repository password, then shows it.
+   **Write the password down and keep it off the Pi.** Without it, the backups can't be
+   restored after the Pi is lost. It then runs a first backup and enables the nightly
+   timer (02:30).
+3. The Status page shows the last backup and warns if one fails or is more than 36 hours old.
+
+By hand:
+```bash
+sudo /opt/cnc-server/host/backup.sh                    # back up now
+sudo /opt/cnc-server/host/restore.sh list              # list backups
+sudo /opt/cnc-server/host/restore.sh file /srv/cnc/haas1/O1234.NC   # old version next to the current file
+```
+
+## 16. Alerts, time and UPS
+
+**Alert emails:** admin page → *Settings* → *Alert emails*. Enter your mail server (ask IT
+for an internal relay), the sender and the recipients, then click **Send a test email**.
+
+The server checks every 5 minutes and emails new problems, resolved problems, and a daily
+reminder for anything critical. It checks:
+- services and disk space;
+- backups;
+- serial ports;
+- the Pi itself: temperature, under-voltage and throttling, SSD wear and SMART status, clock and UPS.
+
+The Pi's checks come from `host/health.py`, which `cnc-health.timer` runs every 5 minutes.
+
+**Time:** the Pi syncs its clock from the internet by default. If IT has a time server:
+```bash
+sudo mkdir -p /etc/systemd/timesyncd.conf.d
+printf '[Time]\nNTP=ntp.example.com\n' | sudo tee /etc/systemd/timesyncd.conf.d/local.conf
+sudo systemctl restart systemd-timesyncd
+timedatectl            # "System clock synchronized: yes"
+```
+
+**UPS (recommended):** with a USB UPS (APC, Eaton, CyberPower …) and
+[NUT](https://networkupstools.org), the Pi shuts down cleanly before the battery runs out,
+and the Status page shows power cuts.
+
+1. Install NUT:
+   ```bash
+   sudo apt install -y nut
+   ```
+2. Set `/etc/nut/nut.conf` to:
+   ```
+   MODE=standalone
+   ```
+3. Add the UPS to `/etc/nut/ups.conf`:
+   ```
+   [ups]
+     driver = usbhid-ups
+     port = auto
+   ```
+4. Add a monitor user to `/etc/nut/upsd.users`, with a password of your choice:
+   ```
+   [upsmon]
+     password = <choose-one>
+     upsmon primary
+   ```
+5. Add these lines to `/etc/nut/upsmon.conf`:
+   ```
+   MONITOR ups@localhost 1 upsmon <choose-one> primary
+   SHUTDOWNCMD "/sbin/shutdown -h +0"
+   ```
+6. Restart NUT and check that it can read the UPS:
+   ```bash
+   sudo systemctl restart nut-server nut-monitor
+   upsc ups@localhost ups.status          # OL = on line power
+   ```
+
+## 17. Disaster recovery (the SSD or Pi died)
+
+You need the backup destination, the **repository password** from step 15, and this repository.
+
+1. Replace the hardware. Do steps 1–7 of this guide, using the same hostname and `.env`.
+   The installer creates a fresh configuration for now.
+2. Point the new Pi at the old backups. Paste the saved password in place of
+   `<saved repository password>`:
+   ```bash
+   echo '<saved repository password>' | sudo tee /etc/cnc-backup.pass >/dev/null
+   printf 'RESTIC_REPOSITORY=<destination>\nRESTIC_PASSWORD_FILE=/etc/cnc-backup.pass\n' | sudo tee /etc/cnc-backup.env >/dev/null
+   sudo chmod 600 /etc/cnc-backup.pass /etc/cnc-backup.env
+   ```
+3. Restore everything:
+   ```bash
+   sudo /opt/cnc-server/host/restore.sh list
+   sudo /opt/cnc-server/host/restore.sh all
+   ```
+   This puts back every program and the whole configuration: machines, users, passwords,
+   network settings and the admin password. It then regenerates the server configs,
+   reloads the firewall and restarts the services.
+4. Check the Status page, then connect one machine and one office PC. Nightly backups
+   continue into the same repository.
+
+The full-stack test (`tests/fullstack.sh`) runs this procedure every time: it backs up,
+wipes the programs and configuration, restores, and checks that machines and the admin
+login work again.
 
 ## Ports for IT
 

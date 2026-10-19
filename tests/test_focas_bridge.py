@@ -98,6 +98,9 @@ st, body = call(8097, "POST", "/download?ip=1.2.3.4&replace=1", T, b"%\nO0042(NE
 check(st == 502 and b"restored" in body and b"OLD VERSION" in MEM.get(42, b""), "failed replace restores the old program")
 st, body = call(8097, "POST", "/download?ip=1.2.3.4&replace=1", T, b"%\nO0042(NEW)\nM30\n%")
 check(st == 200 and json.loads(body)["replaced"] and b"(NEW)" in MEM[42], "replace succeeds")
+for n in ("66770", "0", "10000"):
+    st, body = call(8097, "POST", f"/delete?ip=1.2.3.4&number={n}", T)
+    check(st == 400 and b"1-9999" in body, f"bridge refuses to delete O{n} (would wrap in a C short)")
 st, body = call(8097, "POST", "/download?ip=1.2.3.4", T, b"G00X0\nM30\n")
 check(st == 400 and b"O-number" in body, "program without O-number refused")
 

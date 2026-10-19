@@ -193,6 +193,8 @@ def download(h, data: bytes):
 
 def upload(h, number: int) -> bytes:
     """Read one program out of CNC memory (cnc_upstart3/upload3/upend3)."""
+    if not 1 <= number <= 9999:
+        raise ValueError("program number must be 1-9999")
     l = lib()
     _check("cnc_upstart3", h, l.cnc_upstart3(h, 0, number, number))
     out = bytearray()
@@ -218,4 +220,6 @@ def upload(h, number: int) -> bytes:
 
 
 def delete(h, number: int):
+    if not 1 <= number <= 9999:
+        raise ValueError("program number must be 1-9999")
     _check("cnc_delete", h, lib().cnc_delete(h, number))

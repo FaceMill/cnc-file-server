@@ -2,6 +2,7 @@
 {% block title %}Log in{% endblock %}
 {% block content %}
 <div class="card" style="max-width:420px;margin:60px auto">
+  {% if look.logo %}<img src="{{ url_for('web.branding_logo', v=look.logo_version) }}" alt="" style="max-height:80px;max-width:240px;display:block;margin:0 auto 12px">{% endif %}
   <h1>CNC File Server</h1>
   {% if not configured %}
   <p class="flash error">No admin password is set. On the Pi run:<br>

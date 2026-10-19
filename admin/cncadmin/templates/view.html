@@ -17,6 +17,6 @@
   <a class="btn secondary" href="{{ url_for('web.file_download', name=m.name, folder=folder, file=filename) }}">Download</a>
 </div>
 {% if truncated %}<div class="flash error">This file is large, so only the first 1 MB is shown. Download it to see everything.</div>{% endif %}
-<pre class="log" style="background:#fbfcfd;color:var(--fg);border:1px solid var(--line)">{% for line in lines %}{{ line }}
+<pre class="log" style="background:var(--view-bg);color:var(--fg);border:1px solid var(--line)">{% for line in lines %}{{ line }}
 {% endfor %}</pre>
 {% endblock %}

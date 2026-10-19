@@ -101,6 +101,14 @@ with sync_playwright() as p:
     mp = m.new_page(); mp.goto(BASE + "/machines/haas1"); mp.screenshot(path=f"{SHOTS}/tablet-setup-sheet.png", full_page=True)
     check(mp.locator("h1").is_visible(), "renders on a tablet-sized screen")
 
+    # theme switch: pick Dark, check the page really turns dark, switch back
+    page.goto(BASE + "/settings")
+    page.check("input[name=theme][value=dark]"); page.click("button:has-text('Save colours')")
+    bg = page.evaluate("getComputedStyle(document.body).backgroundColor")
+    check(bg == "rgb(18, 22, 27)", f"Dark theme applied in the browser ({bg})")
+    page.screenshot(path=f"{SHOTS}/dark-settings.png", full_page=True)
+    page.check("input[name=theme][value=default]"); page.click("button:has-text('Save colours')")
+
     check(not js_errors, "no JavaScript errors" + (f": {js_errors[:3]}" if js_errors else ""))
     b.close()
 

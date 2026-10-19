@@ -4,6 +4,28 @@
 <h1>Status</h1>
 
 <div class="card">
+  <h2>Health</h2>
+  {% if health %}
+  <table>
+    {% for i in health %}
+    <tr><td style="width:110px"><span class="pill {{ 'bad' if i.level == 'critical' else 'warn' }}">{{ i.level }}</span></td><td>{{ i.message }}</td></tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p><span class="pill ok">all checks OK</span></p>
+  {% endif %}
+  <p class="hint">
+    {% if host %}Pi {{ host.soc_temperature if host.soc_temperature is not none else '?' }} °C
+      {% if host.ssd and host.ssd.percentage_used is not none %}· SSD wear {{ host.ssd.percentage_used }}%{% endif %}
+      {% if host.ntp_synchronized is not none %}· clock {{ 'synchronised' if host.ntp_synchronized else 'NOT synchronised' }}{% endif %}
+      {% if host.ups and host.ups.configured %}· UPS {{ host.ups.status }}{% endif %}
+      · checked {{ host.time | timestamp }}{% else %}No host health report yet.{% endif %}
+    {% if backup and backup.result == 'ok' %}· last backup {{ backup.time | timestamp }}{% endif %}
+    · <a href="{{ url_for('web.settings') }}">alert emails</a>
+  </p>
+</div>
+
+<div class="card">
   <h2>Machines</h2>
   <table>
     <tr><th>Machine</th><th>Connection</th><th>Address</th><th>Network</th><th>Activity</th></tr>

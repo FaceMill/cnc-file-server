@@ -24,7 +24,8 @@ def _call(machine, method, path, body=None, **params):
     req = urllib.request.Request(f"{BRIDGE_URL}{path}?{query}", data=body, method=method,
                                  headers={"X-Focas-Token": config.focas_token()})
     try:
-        with urllib.request.urlopen(req, timeout=f["timeout"] + 120) as r:
+        # A replace can take an upload, a delete, a download and possibly a restore.
+        with urllib.request.urlopen(req, timeout=f["timeout"] + 420) as r:
             data = r.read()
             return json.loads(data) if r.headers.get_content_type() == "application/json" else data
     except urllib.error.HTTPError as e:

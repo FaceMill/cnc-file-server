@@ -6,6 +6,7 @@ import functools
 import hmac
 import ipaddress
 import os
+import re
 import secrets
 import threading
 import time
@@ -17,7 +18,7 @@ from werkzeug.utils import secure_filename
 
 from . import config, system
 from .config import MACHINE_TYPES, PROTOCOLS, SERIAL_CHOICES, SERIAL_DEFAULTS
-from . import dnc_files, events, focas_client, recycle
+from . import appearance, dnc_files, events, focas_client, monitor, recycle
 from .serial_dnc import manager as dnc
 from .network import CONFIRM_SECONDS, office_change
 from .ntlm import nt_hash
@@ -57,7 +58,9 @@ def csrf_and_pending_guard():
 def inject_globals():
     if "csrf" not in session:
         session["csrf"] = secrets.token_hex(16)
+    look = config.load()["appearance"] if config.exists() else appearance.normalize({})
     return {"csrf": session["csrf"], "pending": office_change.status(),
+            "theme_vars": appearance.css_vars(look), "look": look,
             "pending_error": office_change.last_error, "machine_types": MACHINE_TYPES,
             "protocols": PROTOCOLS, "protocol_of": config.protocol}
 
@@ -164,6 +167,7 @@ def dashboard():
         reachable=system.ping_many([m["ip"] for m in site["machines"] if m["ip"]]),
         connected=system.smb_sessions() | system.ftp_sessions(),
         serial_status=serial_status, adapters=adapters, events=recent,
+        health=monitor.issues(), host=monitor.host_snapshot(), backup=monitor.backup_status(),
         containers=system.container_states(),
         ifaces=system.interfaces(),
         disk=system.disk_usage(),
@@ -423,7 +427,10 @@ def focas_send(name):
     replace = bool(request.form.get("replace"))
     try:
         with open(machine_file(m, "programs", filename), "rb") as f:
-            res = focas_client.download(m, f.read(), replace)
+            data = f.read()
+        if replace:
+            _backup_before_replace(m, data)
+        res = focas_client.download(m, data, replace)
     except (ValueError, focas_client.FocasError) as e:
         focas_log(m, "error", f"Send of {filename} to CNC failed: {e}")
         flash(f"Send failed: {e}", "error")
@@ -434,12 +441,36 @@ def focas_send(name):
     return redirect(url_for("web.machine_detail", name=name))
 
 
+def _cnc_number(raw):
+    n = int(raw)
+    if not 1 <= n <= 9999:
+        raise ValueError("Program number must be 1-9999.")
+    return n
+
+
+def _backup_before_replace(m, data):
+    """Save the CNC's current copy to received/ before it is replaced (kept even if the
+    bridge's own restore fails)."""
+    match = re.search(rb"^\s*%?\s*O(\d{1,4})\b", data.replace(b"\r", b"\n"), re.M)
+    if not match:
+        return
+    number = int(match.group(1))
+    try:
+        old = focas_client.upload(m, number)
+    except focas_client.FocasError:
+        return  # not on the CNC yet: nothing to keep
+    folder = dnc_files.resolve_dir(f"{m['name']}/{config.RECEIVED_SUBDIR}")
+    fname = f"O{number:04d}_{datetime.datetime.now():%Y%m%d-%H%M%S}_before-replace.nc"
+    system.write_shared_file(os.path.join(folder, fname), old)
+    focas_log(m, "info", f"O{number}: copy from the CNC saved as received/{fname} before replacing it")
+
+
 @bp.post("/machines/<name>/focas/read")
 @login_required
 def focas_read(name):
     m = focas_machine(name)
     try:
-        number = int(request.form.get("number", ""))
+        number = _cnc_number(request.form.get("number", ""))
         data = focas_client.upload(m, number)
     except (ValueError, focas_client.FocasError) as e:
         focas_log(m, "error", f"Read from CNC failed: {e}")
@@ -462,7 +493,7 @@ def focas_read(name):
 def focas_delete(name):
     m = focas_machine(name)
     try:
-        number = int(request.form.get("number", ""))
+        number = _cnc_number(request.form.get("number", ""))
         focas_client.delete(m, number)
     except (ValueError, focas_client.FocasError) as e:
         focas_log(m, "error", f"Delete from CNC failed: {e}")
@@ -516,6 +547,9 @@ def file_upload(name):
     if not filename or filename.startswith("."):
         flash("Choose a file to upload.", "error")
         return redirect(url_for("web.machine_detail", name=name))
+    if filename.lower() in (config.RECEIVED_SUBDIR, "recycle"):
+        flash(f"'{filename}' is a reserved name; rename the file first.", "error")
+        return redirect(url_for("web.machine_detail", name=name))
     try:
         path = dnc_files.safe_file(m["name"], filename)
     except ValueError as e:
@@ -527,7 +561,11 @@ def file_upload(name):
             flash(f"{filename} already exists; tick 'replace' to overwrite it.", "error")
             return redirect(url_for("web.machine_detail", name=name))
         _move_to_recycle(m, path)
-    system.write_shared_file(path, data)
+    try:
+        system.write_shared_file(path, data)
+    except FileExistsError:
+        flash(f"{filename} was just written by someone else (a machine or the office); upload again to replace it.", "error")
+        return redirect(url_for("web.machine_detail", name=name))
     events.log_event({"id": m["name"], "name": m["label"] or m["name"]}, "info",
                      f"{filename} uploaded from the web page ({len(data)} bytes)")
     flash(f"{filename} uploaded ({len(data):,} bytes).", "ok")
@@ -557,8 +595,10 @@ def _move_to_recycle(m, path):
     system.make_shared_dir(recycle)
     base = os.path.basename(path)
     dest = os.path.join(recycle, base)
-    if os.path.lexists(dest):
-        dest = os.path.join(recycle, f"{datetime.datetime.now():%Y%m%d-%H%M%S}-{base}")
+    n = 0
+    while os.path.lexists(dest):  # never overwrite an earlier recycled copy
+        n += 1
+        dest = os.path.join(recycle, f"{datetime.datetime.now():%Y%m%d-%H%M%S}-{n}-{base}")
     os.rename(path, dest)
 
 
@@ -567,7 +607,111 @@ def _move_to_recycle(m, path):
 @bp.get("/settings")
 @login_required
 def settings():
-    return render_template("settings.html", site=config.load(), recycle_stats=recycle.stats())
+    return render_template("settings.html", site=config.load(), recycle_stats=recycle.stats(),
+                           swatches=appearance.swatches())
+
+
+@bp.post("/settings/appearance")
+@login_required
+def settings_appearance():
+    with config.lock:
+        site = config.load()
+        a = site["appearance"]
+        a["theme"] = request.form.get("theme", "default")
+        a["accent"] = request.form.get("accent", "").strip() if request.form.get("use_accent") else ""
+        try:
+            config.save(site)
+        except ValueError as e:
+            flash(str(e), "error")
+            return redirect(url_for("web.settings"))
+    flash("Colours saved.", "ok")
+    return redirect(url_for("web.settings"))
+
+
+@bp.post("/settings/logo")
+@login_required
+def settings_logo():
+    f = request.files.get("logo")
+    with config.lock:
+        site = config.load()
+        try:
+            ext = appearance.save_logo(f.read(appearance.LOGO_MAX_BYTES + 1) if f else b"")
+        except ValueError as e:
+            flash(str(e), "error")
+            return redirect(url_for("web.settings"))
+        site["appearance"].update(logo=ext, logo_version=int(time.time()))
+        config.save(site)
+    flash("Logo uploaded.", "ok")
+    return redirect(url_for("web.settings"))
+
+
+@bp.post("/settings/logo/remove")
+@login_required
+def settings_logo_remove():
+    with config.lock:
+        site = config.load()
+        appearance.remove_logo()
+        site["appearance"].update(logo="", logo_version=0)
+        config.save(site)
+    flash("Logo removed.", "ok")
+    return redirect(url_for("web.settings"))
+
+
+@bp.get("/branding/logo")
+def branding_logo():
+    """Public (the login page shows it). Only ever a PNG/JPEG checked on upload."""
+    ext = config.load()["appearance"]["logo"] if config.exists() else ""
+    if not ext or not os.path.isfile(appearance.logo_path(ext)):
+        abort(404)
+    resp = send_file(appearance.logo_path(ext), mimetype=appearance.LOGO_TYPES[ext], max_age=86400)
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["Content-Security-Policy"] = "default-src 'none'"
+    return resp
+
+
+@bp.post("/settings/alerts")
+@login_required
+def settings_alerts():
+    with config.lock:
+        site = config.load()
+        a = site["alerts"]
+        f = request.form
+        a.update(enabled=bool(f.get("enabled")), smtp_host=f.get("smtp_host", "").strip(),
+                 security=f.get("security", "starttls"), username=f.get("username", "").strip(),
+                 sender=f.get("sender", "").strip(),
+                 recipients=[r for r in f.get("recipients", "").replace(",", " ").replace(";", " ").split() if r])
+        a["smtp_port"] = _form_number("smtp_port", 25)
+        if f.get("password"):
+            a["password"] = f["password"]
+        if f.get("clear_password"):
+            a["password"] = ""
+        try:
+            config.save(site)
+        except ValueError as e:
+            flash(str(e), "error")
+            return redirect(url_for("web.settings"))
+    flash("Alert settings saved." + ("" if a["enabled"] else " Alerts are off."), "ok")
+    return redirect(url_for("web.settings"))
+
+
+@bp.post("/settings/alerts/test")
+@login_required
+def settings_alerts_test():
+    a = config.load()["alerts"]
+    if not (a["smtp_host"] and a["sender"] and a["recipients"]):
+        flash("Fill in and save the SMTP server, sender and recipients first.", "error")
+        return redirect(url_for("web.settings"))
+    current = monitor.issues()
+    body = ("This is a test message from the CNC file server.\n\n"
+            + ("Current problems:\n" + "\n".join(f"  [{i['level'].upper()}] {i['message']}" for i in current)
+               if current else "No problems right now."))
+    try:
+        monitor.send_email(a, f"[{monitor.server_name()}] test alert", body)
+    except Exception as e:
+        flash(f"Sending failed: {e}", "error")
+    else:
+        flash(f"Test email sent to {', '.join(a['recipients'])}.", "ok")
+    return redirect(url_for("web.settings"))
 
 
 @bp.post("/settings/recycle")
@@ -688,7 +832,13 @@ def network_cnc():
                 try:
                     system.nm_set_cnc(site["cnc"]["address"])
                 except Exception as e:
-                    flash(f"Not saved: changing the CNC interface address failed ({e}).", "error")
+                    # "modify" may have succeeded before "up" failed: put the old address back.
+                    try:
+                        system.nm_set_cnc(old_address)
+                        back = "the previous address was restored"
+                    except Exception as e2:
+                        back = f"RESTORING the previous address also failed ({e2}); check the Pi's network"
+                    flash(f"Not saved: changing the CNC interface address failed ({e}); {back}.", "error")
                     return redirect(url_for("web.network"))
             config.save(site)
             actions = system.apply_site(site)

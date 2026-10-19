@@ -41,6 +41,15 @@ _machine_locks = {}
 _locks_lock = threading.Lock()
 
 
+def program_number(q):
+    """O-number from the query, 1-9999 only: cnc_delete takes a C short, and an
+    out-of-range value would silently wrap to a different program."""
+    n = int(q["number"])
+    if not 1 <= n <= 9999:
+        raise ValueError("program number must be 1-9999")
+    return n
+
+
 def machine_lock(ip):
     """One FOCAS operation per CNC at a time."""
     with _locks_lock:
@@ -94,9 +103,9 @@ class Handler(BaseHTTPRequestHandler):
                 if route == ("GET", "/programs"):
                     return self._reply(200, {"programs": focas.directory(h)})
                 if route == ("GET", "/upload"):
-                    return self._reply(200, focas.upload(h, int(q["number"])), "application/octet-stream")
+                    return self._reply(200, focas.upload(h, program_number(q)), "application/octet-stream")
                 if route == ("POST", "/delete"):
-                    number = int(q["number"])
+                    number = program_number(q)
                     self._refuse_if_running(h, number)
                     focas.delete(h, number)
                     return self._reply(200, {"deleted": number})
@@ -115,6 +124,10 @@ class Handler(BaseHTTPRequestHandler):
                     focas.download(h, data)
                 except Exception as e:
                     try:
+                        try:
+                            focas.delete(h, number)  # a half-written new program would block the restore
+                        except Exception:
+                            pass
                         focas.download(h, backup)
                         restored = "the previous version was restored"
                     except Exception as e2:
@@ -122,7 +135,7 @@ class Handler(BaseHTTPRequestHandler):
                         restored = f"RESTORING THE PREVIOUS VERSION FAILED ({e2}); it is not on the CNC"
                     raise focas.FocasError(f"cnc_download3 (O{number}: {restored})", getattr(e, "code", 0)) from e
                 return self._reply(200, {"number": number, "bytes": len(data), "replaced": True})
-        except (ValueError, KeyError) as e:
+        except (ValueError, KeyError) as e:  # includes O-numbers out of range
             return self._reply(400, {"error": str(e) or "missing parameter"})
         except focas.FocasError as e:
             return self._reply(502, {"error": str(e), "code": e.code})

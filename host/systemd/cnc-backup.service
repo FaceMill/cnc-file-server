@@ -1,0 +1,10 @@
+[Unit]
+Description=CNC file server: nightly backup (restic)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=@PROJECT_DIR@/host/backup.sh
+Nice=10
+IOSchedulingClass=idle

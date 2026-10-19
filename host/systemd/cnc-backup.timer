@@ -1,0 +1,10 @@
+[Unit]
+Description=CNC file server: nightly backup
+
+[Timer]
+OnCalendar=*-*-* 02:30
+RandomizedDelaySec=30min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

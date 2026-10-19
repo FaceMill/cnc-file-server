@@ -107,6 +107,8 @@ check(any("Send failed" in msg and "program exists" in msg for _, msg in flashes
       "send without replace refused when O-number exists; CNC program untouched")
 r = post("/machines/fanuc5/focas/send", filename="PART42.NC", replace="on")
 check(any("replaced as O42" in msg for _, msg in flashes(r)) and b"(NEW)" in CNC["programs"][42], "send with replace overwrites")
+kept = glob.glob("/srv/cnc/fanuc5/received/O0042_*_before-replace.nc")
+check(len(kept) == 1 and b"OLD" in open(kept[0], "rb").read(), "CNC's previous O42 saved to received/ before replacing")
 check(CNC["calls"][-1][2]["replace"] == "1", "replace flag passed to bridge")
 r = post("/machines/fanuc5/focas/send", filename="O0077.NC")
 check(any("written as O77" in msg for _, msg in flashes(r)) and 77 in CNC["programs"], "new program written")
@@ -114,7 +116,7 @@ r = post("/machines/fanuc5/focas/send", filename="../../etc/passwd")
 check(any(cat == "error" for cat, _ in flashes(r)), "path traversal refused")
 
 r = post("/machines/fanuc5/focas/read", number="42")
-saved = glob.glob("/srv/cnc/fanuc5/received/O0042_*.nc")
+saved = [p for p in glob.glob("/srv/cnc/fanuc5/received/O0042_*.nc") if "before-replace" not in p]
 check(len(saved) == 1 and open(saved[0], "rb").read() == CNC["programs"][42], "read saves program to received/")
 
 CNC["run"] = "START"

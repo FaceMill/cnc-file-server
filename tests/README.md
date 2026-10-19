@@ -13,7 +13,7 @@ tests/fullstack.sh --clean     # remove the simulated Pi
 
 | File | What it tests |
 |---|---|
-| `fullstack.sh` (+ `fs_admin.py`) | Docker-in-Docker "Pi" with eth0 on an office network and eth1 on a CNC network, the real compose stack and generated firewall, driven from simulated office PCs, CNC machines and a rogue device |
+| `fullstack.sh` (+ `fs_admin.py`) | Docker-in-Docker "Pi" with eth0 on an office network and eth1 on a CNC network, the real compose stack and generated firewall, driven from simulated office PCs, CNC machines and a rogue device. Ends with a disaster-recovery drill (backup, wipe, `restore.sh all`) |
 | `test_web.py` | Admin web app: login, CSRF, machines, users, validation, network pages, office change with rollback |
 | `test_protocols.py` | Every control type: setup sheet, generated Samba/FTP/firewall config, validation |
 | `test_serial_dnc.py` | Serial DNC against a simulated FANUC on a TCP serial device server |
@@ -21,6 +21,10 @@ tests/fullstack.sh --clean     # remove the simulated Pi
 | `test_focas_admin.py` | FOCAS pages and actions against a simulated bridge |
 | `test_focas_bridge.py` | The 32-bit FOCAS bridge with FANUC's real library |
 | `test_recycle.py` | Recycle folders: retention setting, emptying by age (counted from deletion), Empty now, symlink safety |
+| `test_review2_fixes.py` | One regression check per fix from the second review (network races, folder takeover, FOCAS ranges, …) |
+| `test_monitor.py` | Health checks (temperature, power, SSD, clock, UPS, backups, disk), Status-page Health card, alert emails against a fake mail server |
+| `test_appearance.py` | Colour themes, accent colour, logo upload (PNG/JPEG only, SVG and oversized refused), public logo URL headers |
+| `test_backup.sh` | Backup/restore drill with the real scripts and restic: back up, wipe, restore, compare every file/owner/mode |
 | `test_review_fixes.py` | One regression check per fix from the security/correctness review |
 | `fuzz_render.py` | Random and hostile configs; accepted ones must pass `nft -c` and `testparm` |
 | `test_browser.py` | Chromium (Playwright): pages, JavaScript, upload/delete |

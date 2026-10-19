@@ -4,6 +4,51 @@
 <h1>Settings</h1>
 
 <div class="card">
+  <h2>Appearance</h2>
+  {% set a = site.appearance %}
+  <form method="post" action="{{ url_for('web.settings_appearance') }}">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Colour theme</label>
+    <div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));gap:10px">
+      {% for key, sw in swatches.items() %}
+      <label style="margin:0;font-weight:400;cursor:pointer;border:2px solid {{ 'var(--accent)' if a.theme == key else 'var(--line)' }};border-radius:8px;padding:8px">
+        <div style="display:flex;height:34px;border-radius:5px;overflow:hidden;margin-bottom:6px;border:1px solid var(--line)">
+          <span style="flex:2;background:{{ sw.header }}"></span><span style="flex:3;background:{{ sw.bg }}"></span>
+          <span style="flex:2;background:{{ sw.accent }}"></span>
+        </div>
+        <input type="radio" name="theme" value="{{ key }}" {{ 'checked' if a.theme == key }}> {{ sw.label }}
+      </label>
+      {% endfor %}
+    </div>
+    <label style="margin-top:14px"><input type="checkbox" name="use_accent" {{ 'checked' if a.accent }}> Use my own accent colour</label>
+    <div class="actions" style="margin-top:0">
+      <input type="color" name="accent" value="{{ a.accent or theme_vars['accent'] }}" style="width:60px;height:34px;padding:0;border:1px solid var(--input-border)">
+      <span class="hint" style="margin:0">Buttons, links and the highlighted menu item. Text on buttons switches to black or white automatically.</span>
+    </div>
+    <div class="actions"><button>Save colours</button></div>
+  </form>
+
+  <label style="margin-top:18px">Logo</label>
+  {% if a.logo %}
+  <div class="actions" style="margin-top:0">
+    <img src="{{ url_for('web.branding_logo', v=a.logo_version) }}" alt="Current logo"
+         style="max-height:60px;max-width:220px;border:1px solid var(--line);border-radius:6px;padding:4px;background:#fff">
+    <form method="post" action="{{ url_for('web.settings_logo_remove') }}" class="inline"
+          data-msg="Remove the logo?" onsubmit="return confirm(this.dataset.msg)">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><button class="secondary">Remove logo</button>
+    </form>
+  </div>
+  {% endif %}
+  <form method="post" enctype="multipart/form-data" action="{{ url_for('web.settings_logo') }}" class="actions" style="margin-top:6px">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="file" name="logo" accept="image/png,image/jpeg" required>
+    <button class="secondary">{{ 'Replace logo' if a.logo else 'Upload logo' }}</button>
+  </form>
+  <div class="hint">PNG or JPEG, up to 1 MB. Shown in the header, on the login page and on printed setup sheets.
+    A wide logo about 300×80 pixels with a transparent background works best.</div>
+</div>
+
+<div class="card">
   <h2>Recycle bin</h2>
   <p class="muted">Files deleted from the office share, a machine's share, or this admin site are moved to hidden
     <span class="mono">.recycle</span> folders (one for the office share and one per machine) instead of being deleted.</p>
@@ -29,6 +74,43 @@
         onsubmit="return confirm(this.dataset.msg)">
     <input type="hidden" name="csrf" value="{{ csrf }}">
     <button class="danger" {{ 'disabled' if not recycle_stats.files }}>Empty recycle folders now</button>
+  </form>
+</div>
+<div class="card">
+  <h2>Alert emails</h2>
+  <p class="muted">Every 5 minutes the server checks services, disk space, backups, serial ports and the Pi itself
+    (temperature, power, SSD wear, clock, UPS). New and resolved problems are listed on the Status page and,
+    if turned on here, emailed. Critical problems are re-sent once a day until fixed.</p>
+  {% set a = site.alerts %}
+  <form method="post" action="{{ url_for('web.settings_alerts') }}">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label><input type="checkbox" name="enabled" {{ 'checked' if a.enabled }}> Send alert emails</label>
+    <div class="actions" style="margin-top:0">
+      <div><div class="hint">SMTP server</div><input type="text" name="smtp_host" value="{{ a.smtp_host }}" placeholder="smtp.example.com" style="width:240px"></div>
+      <div><div class="hint">Port</div><input type="text" name="smtp_port" value="{{ a.smtp_port }}" style="width:70px"></div>
+      <div><div class="hint">Security</div>
+        <select name="security" style="width:auto">
+          {% for v, label in [('starttls', 'STARTTLS'), ('ssl', 'SSL/TLS'), ('none', 'None (internal relay)')] %}
+          <option value="{{ v }}" {{ 'selected' if a.security == v }}>{{ label }}</option>
+          {% endfor %}
+        </select></div>
+    </div>
+    <div class="actions" style="margin-top:0">
+      <div><div class="hint">User name (optional)</div><input type="text" name="username" value="{{ a.username }}" autocomplete="off" style="width:200px"></div>
+      <div><div class="hint">Password {{ '(saved; leave blank to keep)' if a.password else '(optional)' }}</div>
+        <input type="password" name="password" autocomplete="new-password" style="width:200px"></div>
+      {% if a.password %}<label style="margin-top:22px"><input type="checkbox" name="clear_password"> clear saved password</label>{% endif %}
+    </div>
+    <label for="sender">From address</label>
+    <input type="text" id="sender" name="sender" value="{{ a.sender }}" placeholder="cnc-files@example.com">
+    <label for="recipients">Send to</label>
+    <input type="text" id="recipients" name="recipients" value="{{ a.recipients | join(', ') }}" placeholder="maintenance@example.com, you@example.com">
+    <div class="hint">Separate several addresses with commas.</div>
+    <div class="actions"><button>Save</button></div>
+  </form>
+  <form method="post" action="{{ url_for('web.settings_alerts_test') }}" class="actions" style="margin-top:0">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button class="secondary">Send a test email</button>
   </form>
 </div>
 {% endblock %}

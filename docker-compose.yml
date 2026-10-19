@@ -86,7 +86,7 @@ services:
       - /run/dbus/system_bus_socket:/run/dbus/system_bus_socket
 
   caddy:
-    image: caddy:2.8.4
+    image: caddy:2.11.7
     container_name: caddy
     network_mode: host
     restart: unless-stopped

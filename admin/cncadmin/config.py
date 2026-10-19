@@ -81,6 +81,21 @@ FOCAS_DEFAULTS = {
 # this many days there are removed for good. 0 = never empty automatically.
 RECYCLE_DEFAULTS = {"retention_days": 60}
 
+# Alert emails about health problems (Settings page). Off until configured.
+ALERT_DEFAULTS = {
+    "enabled": False,
+    "smtp_host": "",
+    "smtp_port": 25,
+    "security": "starttls",   # none, starttls, ssl
+    "username": "",
+    "password": "",
+    "sender": "",
+    "recipients": [],
+}
+ALERT_SECURITY = ("none", "starttls", "ssl")
+EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+HOSTNAME_RE = re.compile(r"[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?")
+
 
 def normalize_focas(f):
     return {**FOCAS_DEFAULTS, **{k: v for k, v in (f or {}).items() if k in FOCAS_DEFAULTS}}
@@ -140,6 +155,8 @@ def default_site(office_subnet, office_if="eth0", cnc_if="eth1"):
         ],
         "office_users": [],
         "recycle": dict(RECYCLE_DEFAULTS),
+        "alerts": dict(ALERT_DEFAULTS),
+        "appearance": {},
     }
 
 
@@ -155,7 +172,10 @@ def load():
             m["serial"] = normalize_serial(m["serial"])
         if "focas" in m:
             m["focas"] = normalize_focas(m["focas"])
-    site["recycle"] = {**RECYCLE_DEFAULTS, **site.get("recycle", {})}  # configs from before this setting
+    site["recycle"] = {**RECYCLE_DEFAULTS, **site.get("recycle", {})}  # configs from before these settings
+    site["alerts"] = {**ALERT_DEFAULTS, **site.get("alerts", {})}
+    from . import appearance
+    site["appearance"] = appearance.normalize(site.get("appearance"))
     return site
 
 
@@ -327,6 +347,26 @@ def validate(site):
     days = site.get("recycle", {}).get("retention_days")
     if not isinstance(days, int) or isinstance(days, bool) or not 0 <= days <= 3650:
         raise ValueError("Recycle bin: keep files for 0 to 3650 days (0 = never empty automatically)")
+
+    from . import appearance
+    site["appearance"] = appearance.normalize(site.get("appearance"))
+    appearance.validate(site["appearance"])
+
+    a = site.get("alerts", ALERT_DEFAULTS)
+    if a["security"] not in ALERT_SECURITY:
+        raise ValueError("Alerts: choose none, STARTTLS or SSL")
+    if not isinstance(a["smtp_port"], int) or isinstance(a["smtp_port"], bool) or not 1 <= a["smtp_port"] <= 65535:
+        raise ValueError("Alerts: SMTP port must be 1-65535")
+    # Addresses go into mail headers: strict patterns, so no line breaks can sneak in.
+    if a["smtp_host"] and not HOSTNAME_RE.fullmatch(a["smtp_host"]):
+        raise ValueError("Alerts: SMTP server must be a host name or IP address")
+    for addr in ([a["sender"]] if a["sender"] else []) + list(a["recipients"]):
+        if not EMAIL_RE.fullmatch(addr):
+            raise ValueError(f"Alerts: '{addr}' is not a valid email address")
+    if any(ord(ch) < 32 for ch in a["username"] + a["password"]):
+        raise ValueError("Alerts: user name and password can't contain control characters")
+    if a["enabled"] and not (a["smtp_host"] and a["sender"] and a["recipients"]):
+        raise ValueError("Alerts: to turn alerts on, fill in the SMTP server, sender and at least one recipient")
 
     for u in site["office_users"]:
         if not USER_NAME_RE.fullmatch(u["name"]):

@@ -44,6 +44,7 @@ network. This server sits between the two:
 - [Day-to-day use](#day-to-day-use)
 - [Updating](#updating)
 - [Backups](#backups)
+- [Monitoring and alerts](#monitoring-and-alerts)
 - [Testing](#testing)
 - [Repository layout](#repository-layout)
 - [Troubleshooting](#troubleshooting)
@@ -76,12 +77,12 @@ FANUC never receives more than 10 characters after it sends XOFF (alarm 087).
 
 | Page | What you can do |
 |---|---|
-| **Status** | Every machine: on the network (ping) or serial adapter present, connected / transferring now. Service health, interface addresses, free disk, recent DNC activity. |
+| **Status** | A **Health** card (services, disk, backups, serial ports, and the Pi itself: temperature, power, SSD wear, clock, UPS). Every machine: on the network (ping) or serial adapter present, connected / transferring now. Interface addresses, free disk, recent DNC activity. |
 | **Machines** | Add, edit, remove machines. Each machine page has its files (upload, view, download, delete to a recycle folder), the setup sheet for its control, and — for serial and FOCAS machines — live transfer status and controls. |
 | **Office users** | Logins for the office SMB3 share (`\\<pi>\CNC`). Passwords are stored only as hashes. |
 | **Network** | Office side: DHCP or static, allowed office subnets (firewall). Changes **roll back automatically after 2 minutes** unless confirmed, so a mistake can't lock you out. CNC side: the Pi's address and every machine's IP. SMB workgroup. |
 | **Logs** | DNC activity (requests, sends, receives, port errors) and the last lines of every service's log. |
-| **Settings** | Recycle bin: how many files and how much space the recycle folders hold, **automatic emptying** of files deleted more than N days ago (default **60**, 0 = off, checked every few hours), and **Empty now**. |
+| **Settings** | **Appearance**: colour theme (Blue, Slate, Forest, Safety orange, Dark, High contrast), optional accent colour, optional logo (PNG/JPEG, shown in the header, login page and printed setup sheets). **Recycle bin**: totals, **automatic emptying** of files deleted more than N days ago (default **60**, 0 = off), **Empty now**. **Alert emails**: SMTP settings and a test button; new, resolved and daily-repeated critical problems are emailed. |
 | **Account** | Change the admin password. |
 
 [Cockpit](https://cockpit-project.org/) at `https://<pi-hostname>:9090` (Pi login)
@@ -173,15 +174,30 @@ on purpose: SMB1 is deprecated upstream, so test before moving to a newer releas
 
 ## Backups
 
-Back up these two places (machine programs and all configuration):
+Nightly, encrypted, deduplicated backups of every program (`/srv/cnc`) and the whole
+configuration (`config/`, `.env`) with restic, checked weekly:
 
-| Path | Contains |
-|---|---|
-| `/srv/cnc/` | Every machine's programs, received programs, recycle folders |
-| `/opt/cnc-server/config/` | `site.json` (machines, users, network), admin password hash, keys, DNC event log |
+```bash
+sudo /opt/cnc-server/host/setup-backup.sh      # choose a destination (USB disk, SFTP, REST server)
+```
 
-`restic` is installed; a nightly backup to a network file server is still to be set up
-(see [PLAN.md](PLAN.md)). `generated/` is rebuilt from `config/` and needs no backup.
+Write down the repository password it shows. The Status page warns if a backup fails or is
+more than 36 hours old. `host/restore.sh` restores a single file (older version next to
+the current one) or everything after a hardware failure. See
+[docs/INSTALL.md](docs/INSTALL.md#15-backups) and
+[disaster recovery](docs/INSTALL.md#17-disaster-recovery-the-ssd-or-pi-died). The full-stack
+test rehearses the recovery every run.
+
+## Monitoring and alerts
+
+`host/health.py` (every 5 minutes) reports the Pi's temperature, under-voltage and
+throttling, SSD wear and SMART status, clock sync and UPS state. cnc-admin combines this
+with service, disk, backup and serial-port checks into the **Health** card on the Status
+page, and, if configured on the Settings page, emails new problems, resolutions, and a
+daily reminder for anything critical. Setting up NTP and a UPS (clean shutdown on power
+loss) is in [docs/INSTALL.md](docs/INSTALL.md#16-alerts-time-and-ups).
+
+For shop staff: **[docs/RUNBOOK.md](docs/RUNBOOK.md)**, a printable one-page guide to everyday problems.
 
 ## Testing
 
@@ -198,11 +214,13 @@ network. The last full run passed everything:
 | Static (ruff, shellcheck, compose, Caddyfile, firewall syntax, pip-audit) | all pass |
 | Admin web app / control types | 49 / 41 |
 | Serial DNC over TCP / over a tty (incl. 1 MB drip-feed) | 32 / 8 |
-| FOCAS admin side / FOCAS bridge with FANUC's real library | 20 / 15 |
-| Regression checks for every review finding | 40 |
+| FOCAS admin side / FOCAS bridge with FANUC's real library | 21 / 18 |
+| Regression checks for every review finding (two reviews) | 40 + 20 |
+| Recycle folders / health + alert emails / appearance + logo | 21 / 33 / 33 |
+| Backup/restore drill (real scripts + restic; wipe and restore, compare every file) | 24 |
 | Fuzzing: hostile configs through real `nft -c` and `testparm` | ~600 + ~1200, 0 failures |
-| Browser (Chromium): pages, JavaScript, upload/delete | 34 |
-| Full stack: simulated Pi, office PCs, CNC machines, rogue device | 42 |
+| Browser (Chromium): pages, JavaScript, upload/delete | 36 |
+| Full stack: simulated Pi, office PCs, CNC machines, rogue device, disaster-recovery drill | 53 |
 
 Details in [tests/README.md](tests/README.md). Not covered without hardware:
 NetworkManager on the Pi, the FOCAS library on a real Pi 5, real CNC controls, real USB adapters.
@@ -217,8 +235,10 @@ samba/            Samba image (used for both the office and the CNC file server)
 ftp/              vsftpd image for FTP machines
 focas/            32-bit FOCAS bridge (FANUC libfwlib32 via ctypes); lib/ for a FANUC-supplied library
 caddy/            HTTPS reverse proxy config
-host/             install.sh, setup-network.sh, firewall boot stub and fallback
-docs/             INSTALL.md, cnc-client-setup.md (per control), SERIAL-PORTS.md (adapters, cables)
+host/             install.sh, setup-network.sh, firewall boot stub and fallback,
+                   backup.sh / restore.sh / setup-backup.sh, health.py, systemd/ timers
+docs/             INSTALL.md, RUNBOOK.md (shop staff), cnc-client-setup.md (per control),
+                   SERIAL-PORTS.md (adapters, cables)
 tests/            all test suites and the simulated-Pi full-stack test
 docker-compose.yml
 PLAN.md           design decisions, review findings, open items
