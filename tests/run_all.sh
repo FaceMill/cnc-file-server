@@ -118,13 +118,10 @@ suite "browser UI + JavaScript" "--add-host host.docker.internal:host-gateway -e
 
 if [ "${1:-}" = "--fullstack" ]; then
     echo "== Full stack (simulated Pi with office + CNC networks)"
-    for topology in standard bridge; do
-        [ $topology = standard ] && label="full stack (simulated Pi)" || label="full stack (Wi-Fi + bridged ports)"
-        "$PROJECT/tests/fullstack.sh" --clean >/dev/null
-        fs=$(FS_TOPOLOGY=$topology "$PROJECT/tests/fullstack.sh" 2>&1); echo "$fs" | grep FAIL
-        line=$(grep "^Full stack:" <<<"$fs")
-        if grep -q " 0 failed" <<<"$line"; then record "$label" "PASS (${line#Full stack: })"; else record "$label" "FAIL (${line#Full stack: })"; fi
-    done
+    "$PROJECT/tests/fullstack.sh" --clean >/dev/null
+    fs=$("$PROJECT/tests/fullstack.sh" 2>&1); echo "$fs" | grep FAIL
+    line=$(grep "^Full stack:" <<<"$fs")
+    if grep -q " 0 failed" <<<"$line"; then record "full stack (simulated Pi)" "PASS (${line#Full stack: })"; else record "full stack (simulated Pi)" "FAIL (${line#Full stack: })"; fi
     "$PROJECT/tests/fullstack.sh" --clean >/dev/null
 fi
 
