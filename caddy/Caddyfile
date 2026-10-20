@@ -7,16 +7,18 @@
 	default_sni {$OFFICE_HOSTNAME}
 }
 
-# CNC admin. The second address answers requests by IP (e.g. right after an office
-# IP change, before DNS follows), which carry no matching Host name.
-https://{$OFFICE_HOSTNAME}:8443, https://:8443 {
+# CNC admin. The catch-all address answers requests by IP (e.g. right after an office
+# IP change, before DNS follows), which carry no matching Host name. localhost needs its
+# own certificate: a browser on the Pi sends that name, and Caddy refuses names it has
+# no certificate for (the browser shows ERR_SSL_PROTOCOL_ERROR).
+https://{$OFFICE_HOSTNAME}:8443, https://localhost:8443, https://:8443 {
 	# Self-signed internal CA; swap for a certificate from your organisation's CA if available.
 	tls internal
 	reverse_proxy 127.0.0.1:8090
 }
 
 # Plain https://<pi>/ goes to the admin page.
-https://{$OFFICE_HOSTNAME}, https://:443 {
+https://{$OFFICE_HOSTNAME}, https://localhost, https://:443 {
 	tls internal
 	redir https://{host}:8443{uri}
 }

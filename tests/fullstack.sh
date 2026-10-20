@@ -45,7 +45,7 @@ docker run -d --name pi --hostname cnc-files --privileged --network pi-office --
     docker:27-dind --iptables=false --ip6tables=false --ip-forward=false >/dev/null
 docker network connect --ip 192.168.50.1 pi-cnc pi
 for _ in $(seq 1 30); do pi 'docker info' >/dev/null 2>&1 && break; sleep 2; done
-pi 'apk add -q nftables restic bash python3 iproute2 >/dev/null'   # before the firewall: it cuts the simulation's DNS
+pi 'apk add -q nftables restic bash python3 iproute2 curl >/dev/null'   # before the firewall: it cuts the simulation's DNS
 docker save local/cnc-admin:1.0 local/cnc-samba:1.0 local/cnc-ftp:1.0 local/cnc-focas:1.0 caddy:2.11.7 | docker exec -i pi docker load >/dev/null
 pi 'mkdir -p /opt/cnc-server'
 tar -C "$PROJECT" --exclude=.vscode --exclude=tests --exclude=config --exclude=generated --exclude=data -cf - . | docker exec -i pi tar -C /opt/cnc-server -xf -
@@ -89,6 +89,7 @@ A="docker exec office-pc python3 /fs_admin.py"
 echo "== Admin page over HTTPS (Caddy)"
 t "login by hostname" sh -c "$A login password=fullstack-pass-1 | grep -q '\[\]'"
 t "admin page answers by IP too (confirm after an IP change)" sh -c "docker exec office-pc curl -sk https://10.20.0.10:8443/login | grep -q 'CNC File Server'"
+t "admin page in the Pi's own browser (https://localhost:8443)" pi 'curl -sk https://localhost:8443/login | grep -q "CNC File Server"'
 t "https://<pi>/ redirects to :8443" sh -c "docker exec office-pc curl -sk -o /dev/null -w '%{redirect_url}' --resolve cnc-files.test:443:10.20.0.10 https://cnc-files.test/ | grep -q ':8443/'"
 t "add office user" sh -c "$A post path=/users/add name=programmer password=Office-pass-1 repeat=Office-pass-1 | grep -q 'User added'"
 t "add FTP machine" sh -c "$A post path=/machines/new name=fanuc1 label=FANUC type=fanuc-dataserver ip=192.168.50.21 password=FANUCPW1 | grep -q added"
