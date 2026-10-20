@@ -71,6 +71,9 @@ suite "appearance + logo"        "$ADMIN" "$INIT && timeout 300 python /tests/te
 mkdir -p "$SCRATCH/proj" && cp -R "$PROJECT/host" "$SCRATCH/proj/" && cp -R "$T" "$SCRATCH/proj/tests"
 suite "backup / restore drill"   "-v $SCRATCH/proj:/project:ro debian:bookworm-slim" \
     "apt-get -qq update >/dev/null && apt-get -qq install -y restic python3 >/dev/null 2>&1 && bash /project/tests/test_backup.sh"
+for v in bookworm trixie; do
+    suite "network setup (NetworkManager, $v)" "--privileged -v $SCRATCH/proj:/project:ro debian:$v" "bash /project/tests/test_setup_network.sh"
+done
 suite "FOCAS bridge (32-bit ARM)" "--platform linux/arm/v7 -e PYTHONPATH=/app -v $T:/tests:ro local/cnc-focas:1.0" "timeout 300 python /tests/test_focas_bridge.py"
 suite "FOCAS bridge (x86-64)"    "--platform linux/amd64 -e PYTHONPATH=/app -v $T:/tests:ro local/cnc-focas:amd64" "timeout 300 python /tests/test_focas_bridge.py"
 suite "FOCAS bridge (32-bit x86)" "--platform linux/386 -e PYTHONPATH=/app -v $T:/tests:ro local/cnc-focas:386" "timeout 300 python /tests/test_focas_bridge.py"
@@ -115,9 +118,13 @@ suite "browser UI + JavaScript" "--add-host host.docker.internal:host-gateway -e
 
 if [ "${1:-}" = "--fullstack" ]; then
     echo "== Full stack (simulated Pi with office + CNC networks)"
-    fs=$("$PROJECT/tests/fullstack.sh" 2>&1); echo "$fs" | grep FAIL
-    line=$(grep "^Full stack:" <<<"$fs")
-    grep -q " 0 failed" <<<"$line" && record "full stack (simulated Pi)" "PASS (${line#Full stack: })" || record "full stack (simulated Pi)" "FAIL (${line#Full stack: })"
+    for topology in standard bridge; do
+        [ $topology = standard ] && label="full stack (simulated Pi)" || label="full stack (Wi-Fi + bridged ports)"
+        "$PROJECT/tests/fullstack.sh" --clean >/dev/null
+        fs=$(FS_TOPOLOGY=$topology "$PROJECT/tests/fullstack.sh" 2>&1); echo "$fs" | grep FAIL
+        line=$(grep "^Full stack:" <<<"$fs")
+        if grep -q " 0 failed" <<<"$line"; then record "$label" "PASS (${line#Full stack: })"; else record "$label" "FAIL (${line#Full stack: })"; fi
+    done
     "$PROJECT/tests/fullstack.sh" --clean >/dev/null
 fi
 

@@ -6,6 +6,10 @@
 #
 #   tests/fullstack.sh            build images, run, leave the simulation running
 #   tests/fullstack.sh --clean    remove the simulation containers and networks
+#
+#   FS_TOPOLOGY=bridge tests/fullstack.sh
+#       test-bench layout: office on wlan0 (OFFICE_IF=wlan0), two CNC ports bridged as
+#       br-cnc (CNC_IF="eth1 eth2"), haas1 on the first port and haas2 on the second
 set -uo pipefail
 
 PROJECT=$(cd "$(dirname "$0")/.." && pwd)
@@ -19,10 +23,12 @@ port(){ docker exec "$1" nc -z -w 3 "$2" "$3"; }
 pi()  { docker exec pi sh -c "$1"; }
 
 clean() {
-    docker rm -f pi office-pc haas1 rogue fanuc1 devserver >/dev/null 2>&1
-    docker network rm pi-office pi-cnc >/dev/null 2>&1
+    docker rm -f pi office-pc haas1 haas2 rogue fanuc1 devserver >/dev/null 2>&1
+    docker network rm pi-office pi-cnc pi-cnc2 >/dev/null 2>&1
 }
 if [ "${1:-}" = "--clean" ]; then clean; echo "cleaned"; exit 0; fi
+TOPOLOGY=${FS_TOPOLOGY:-standard}
+if [ "$TOPOLOGY" = bridge ]; then OIF=wlan0; CNC_PORTS="eth1 eth2"; CIF=br-cnc; else OIF=eth0; CNC_PORTS=eth1; CIF=eth1; fi
 
 echo "== Build images"
 for i in admin samba ftp; do docker build -q --pull --network host -t "local/cnc-$i:1.0" "$PROJECT/$i" >/dev/null || exit 1; done
@@ -33,7 +39,7 @@ FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends smbclient python3 curl iproute2 netcat-openbsd ca-certificates && rm -rf /var/lib/apt/lists/*
 EOF
 
-echo "== Simulated Pi (eth0 office, eth1 CNC)"
+echo "== Simulated Pi ($OIF office, $CIF CNC: $CNC_PORTS)"
 clean
 docker network create --subnet 10.20.0.0/16 --gateway 10.20.0.1 pi-office >/dev/null
 docker network create --subnet 192.168.50.0/24 --gateway 192.168.50.254 pi-cnc >/dev/null
@@ -41,7 +47,19 @@ docker run -d --name pi --hostname cnc-files --privileged --network pi-office --
     docker:27-dind --iptables=false --ip6tables=false --ip-forward=false >/dev/null
 docker network connect --ip 192.168.50.1 pi-cnc pi
 for _ in $(seq 1 30); do pi 'docker info' >/dev/null 2>&1 && break; sleep 2; done
-pi 'apk add -q nftables restic bash python3 >/dev/null'   # before the firewall: it cuts the simulation's DNS
+pi 'apk add -q nftables restic bash python3 iproute2 >/dev/null'   # before the firewall: it cuts the simulation's DNS
+if [ "$TOPOLOGY" = bridge ]; then
+    # Second CNC port on its own Docker network (Docker needs a different subnet; the
+    # machine on it is re-addressed into 192.168.50.0/24, which the bridge carries).
+    docker network create --subnet 192.168.51.0/24 --gateway 192.168.51.254 pi-cnc2 >/dev/null
+    docker network connect --ip 192.168.51.1 pi-cnc2 pi
+    pi 'set -e
+        ip link set eth0 down; ip link set eth0 name wlan0; ip link set wlan0 up
+        ip route replace default via 10.20.0.1 dev wlan0
+        ip link add br-cnc type bridge stp_state 0; ip link set br-cnc up
+        for p in eth1 eth2; do ip addr flush dev $p; ip link set $p master br-cnc; done
+        ip addr add 192.168.50.1/24 dev br-cnc' || { echo "could not build the bridge layout"; exit 1; }
+fi
 docker save local/cnc-admin:1.0 local/cnc-samba:1.0 local/cnc-ftp:1.0 local/cnc-focas:1.0 caddy:2.11.7 | docker exec -i pi docker load >/dev/null
 pi 'mkdir -p /opt/cnc-server'
 tar -C "$PROJECT" --exclude=.vscode --exclude=tests --exclude=config --exclude=generated --exclude=data -cf - . | docker exec -i pi tar -C /opt/cnc-server -xf -
@@ -49,17 +67,18 @@ tar -C "$PROJECT" --exclude=.vscode --exclude=tests --exclude=config --exclude=g
 echo "== Install (as host/install.sh, minus apt/systemd/NetworkManager)"
 pi '
 set -e; cd /opt/cnc-server
-cp .env.example .env && sed -i "s/^OFFICE_HOSTNAME=.*/OFFICE_HOSTNAME=cnc-files.test/" .env
+cp .env.example .env && sed -i "s/^OFFICE_HOSTNAME=.*/OFFICE_HOSTNAME=cnc-files.test/; s/^OFFICE_IF=.*/OFFICE_IF='"$OIF"'/; s/^CNC_IF=.*/CNC_IF=\"'"$CNC_PORTS"'\"/" .env
 addgroup -g 2000 cncfiles; adduser -D -H -u 2000 -G cncfiles -s /sbin/nologin cncfiles
 mkdir -p /srv/cnc config generated data/caddy data/portainer
 chown 2000:2000 /srv/cnc; chmod 0770 /srv/cnc; chmod 0700 config generated
 sysctl -qw net.ipv4.ip_forward=0
-docker compose run --rm --no-deps cnc-admin python -m cncadmin.cli init --office-subnet 10.20.0.0/16 >/dev/null
+docker compose run --rm --no-deps cnc-admin python -m cncadmin.cli init --office-subnet 10.20.0.0/16 --office-if '"$OIF"' --cnc-if '"$CIF"' >/dev/null
 docker compose run --rm --no-deps cnc-admin python -m cncadmin.cli render >/dev/null
 docker compose run --rm --no-deps cnc-admin python -c "from werkzeug.security import generate_password_hash as g; from cncadmin import config; config.set_admin_password_hash(g(\"fullstack-pass-1\"))"
 sed "s|@PROJECT_DIR@|/opt/cnc-server|" host/nftables.conf > /etc/nftables.conf
 nft -c -f /etc/nftables.conf && nft -f /etc/nftables.conf
-nft -c -f host/nftables-fallback.conf
+sed "s|@OFFICE_IF@|'"$OIF"'|" host/nftables-fallback.conf > /etc/nftables-fallback.conf
+nft -c -f /etc/nftables-fallback.conf
 docker compose up -d --no-build >/dev/null 2>&1
 ' || { echo "install failed"; exit 1; }
 sleep 10
@@ -72,6 +91,10 @@ docker run -d --name office-pc --cap-add NET_ADMIN --network pi-office --ip 10.2
 for c in "haas1 192.168.50.11" "rogue 192.168.50.99" "fanuc1 192.168.50.21"; do
     set -- $c; docker run -d --name "$1" --cap-add NET_ADMIN --network pi-cnc --ip "$2" local/netclient sleep 7200 >/dev/null
 done
+if [ "$TOPOLOGY" = bridge ]; then   # haas2 plugged into the Pi's second CNC port
+    docker run -d --name haas2 --cap-add NET_ADMIN --network pi-cnc2 --ip 192.168.51.12 local/netclient sleep 7200 >/dev/null
+    docker exec haas2 sh -c 'ip addr flush dev eth0 && ip addr add 192.168.50.12/24 dev eth0'
+fi
 docker run -d --name devserver --network pi-cnc --ip 192.168.50.40 local/netclient python3 -c "
 import socket, time
 s = socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1); s.bind(('0.0.0.0', 4001)); s.listen(5)
@@ -121,6 +144,18 @@ docker exec haas1 ip route add 10.20.0.0/16 via 192.168.50.1 2>/dev/null
 n "haas1 routed via Pi -> office (no forwarding)" port haas1 10.20.5.5 22
 n "haas1 -> Pi's office-side SMB port (firewall checks destination)" port haas1 10.20.0.10 445
 
+if [ "$TOPOLOGY" = bridge ]; then
+    echo "== Second CNC port (bridge br-cnc): haas2 192.168.50.12"
+    H2=$($A password name=haas2)
+    t "haas2 logs in over SMB1 through the second port" docker exec haas2 smbclient //192.168.50.1/haas2 -U "haas2%$H2" -m NT1 --option='client min protocol=NT1' --option='client ntlmv2 auth=no' --option='client use spnego=no' -c ls
+    t "haas2 saves back; the office sees it" sh -c "docker exec haas2 sh -c \"printf 'Y\n' > /tmp/O2222.NC && smbclient //192.168.50.1/haas2 -U 'haas2%$H2' -m NT1 --option='client min protocol=NT1' -c 'put /tmp/O2222.NC O2222.NC'\" && docker exec office-pc $OFF -c 'cd haas2; ls' | grep -q O2222.NC"
+    n "haas2 -> haas1's share refused" docker exec haas2 smbclient //192.168.50.1/haas1 -U "haas2%$H2" -m NT1 --option='client min protocol=NT1' -c ls
+    for p in 8443 22 21; do n "haas2 -> Pi port $p closed" port haas2 192.168.50.1 "$p"; done
+    docker exec haas2 ip route add 10.20.0.0/16 via 192.168.50.1 2>/dev/null
+    n "haas2 routed via Pi -> office (no forwarding)" port haas2 10.20.5.5 22
+    t "Status page lists wlan0 (office) and br-cnc (CNC)" sh -c "$A get path=/ n=200000 | grep -q wlan0 && $A get path=/ n=200000 | grep -q br-cnc"
+fi
+
 echo "== Rogue device 192.168.50.99"
 n "SMB blocked" port rogue 192.168.50.1 445
 n "FTP blocked" port rogue 192.168.50.1 21
@@ -145,7 +180,7 @@ n "bridge refuses requests without the token" pi 'wget -qO- "http://127.0.0.1:80
 echo "== Resilience"
 pi 'docker restart samba-cnc >/dev/null'; sleep 4
 t "machine logs in after samba-cnc restart" docker exec haas1 smbclient //192.168.50.1/haas1 -U "haas1%$H1" -m NT1 --option='client min protocol=NT1' -c ls
-t "fallback firewall loads if the generated one is broken" pi 'cp /opt/cnc-server/generated/nftables.conf /tmp/nft.bak && echo garbage > /opt/cnc-server/generated/nftables.conf && { nft -f /etc/nftables.conf 2>/dev/null || nft -f /opt/cnc-server/host/nftables-fallback.conf; } && nft list ruleset | grep -q "tcp dport 22 accept"; rc=$?; cp /tmp/nft.bak /opt/cnc-server/generated/nftables.conf && nft -f /etc/nftables.conf; exit $rc'
+t "fallback firewall loads if the generated one is broken" pi 'cp /opt/cnc-server/generated/nftables.conf /tmp/nft.bak && echo garbage > /opt/cnc-server/generated/nftables.conf && { nft -f /etc/nftables.conf 2>/dev/null || nft -f /etc/nftables-fallback.conf; } && nft list ruleset | grep -q "iifname \"'"$OIF"'\" tcp dport 22 accept"; rc=$?; cp /tmp/nft.bak /opt/cnc-server/generated/nftables.conf && nft -f /etc/nftables.conf; exit $rc'
 
 echo "== Disaster recovery (backup -> lose everything -> restore.sh all)"
 pi 'head -c 24 /dev/urandom | base64 > /etc/cnc-backup.pass && printf "RESTIC_REPOSITORY=/backup/repo\nRESTIC_PASSWORD_FILE=/etc/cnc-backup.pass\n" > /etc/cnc-backup.env'

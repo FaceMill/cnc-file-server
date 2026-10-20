@@ -24,6 +24,22 @@ if [ -z "${FOCAS_PLATFORM:-}" ]; then
 fi
 echo "FOCAS bridge platform: $FOCAS_PLATFORM"
 
+# Network ports (OFFICE_IF / CNC_IF in .env). Several CNC ports are bridged as br-cnc.
+OFFICE_IF=${OFFICE_IF:-eth0}
+CNC_IF=${CNC_IF:-eth1}
+read -r -a CNC_PORTS <<<"$CNC_IF"
+if [ ${#CNC_PORTS[@]} -gt 1 ]; then CNC_NET_IF=br-cnc; else CNC_NET_IF=${CNC_PORTS[0]:-eth1}; fi
+export OFFICE_IF CNC_IF
+echo "Office network: $OFFICE_IF   CNC network: $CNC_NET_IF (${CNC_PORTS[*]})"
+if [ -f config/site.json ]; then
+    configured=$(python3 -c 'import json, sys; s = json.load(open(sys.argv[1])); print(s["office"]["interface"], s["cnc"]["interface"])' config/site.json)
+    if [ "$configured" != "$OFFICE_IF $CNC_NET_IF" ]; then
+        echo "config/site.json uses interfaces '$configured', but .env says '$OFFICE_IF $CNC_NET_IF'." >&2
+        echo "Fix OFFICE_IF/CNC_IF in .env, or the \"interface\" fields in config/site.json." >&2
+        exit 1
+    fi
+fi
+
 apt-get update
 apt-get -y full-upgrade
 apt-get install -y nftables cockpit unattended-upgrades restic curl smartmontools
@@ -72,7 +88,7 @@ else
     echo "         won't work; everything else will. See focas/lib/README.md." >&2
 fi
 if [ ! -f config/site.json ]; then
-    docker compose run --rm --no-deps cnc-admin python -m cncadmin.cli init
+    docker compose run --rm --no-deps cnc-admin python -m cncadmin.cli init --office-if "$OFFICE_IF" --cnc-if "$CNC_NET_IF"
 fi
 docker compose run --rm --no-deps cnc-admin python -m cncadmin.cli render
 docker compose run --rm --no-deps cnc-admin python -m cncadmin.cli set-admin-password
@@ -80,7 +96,8 @@ docker compose run --rm --no-deps cnc-admin python -m cncadmin.cli set-admin-pas
 # Firewall: boot-time include of the generated rules. If they are ever missing or
 # invalid, a locked-down fallback is loaded instead of booting with no firewall.
 sed "s|@PROJECT_DIR@|$PROJECT_DIR|" host/nftables.conf > /etc/nftables.conf
-install -m 0644 host/nftables-fallback.conf /etc/nftables-fallback.conf
+sed "s|@OFFICE_IF@|$OFFICE_IF|" host/nftables-fallback.conf > /etc/nftables-fallback.conf
+chmod 0644 /etc/nftables-fallback.conf
 install -D -m 0644 host/nftables-fallback.service.conf /etc/systemd/system/nftables.service.d/fallback.conf
 nft -c -f /etc/nftables.conf
 nft -c -f /etc/nftables-fallback.conf

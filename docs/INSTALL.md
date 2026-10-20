@@ -52,7 +52,9 @@ the office network, and SSH (built into Windows 10+, macOS and Linux).
 ## 2. Install Raspberry Pi OS
 
 1. On your computer, install [Raspberry Pi Imager](https://www.raspberrypi.com/software/).
-2. Choose **Raspberry Pi 5**, then **Raspberry Pi OS (other) → Raspberry Pi OS Lite (64-bit)**.
+2. Choose **Raspberry Pi 5**, then **Raspberry Pi OS (other) → Raspberry Pi OS Lite (64-bit)**
+   (the current release, Debian 13 "Trixie"; Bookworm works too). For a test bench, the
+   desktop version is fine; see [Test bench](#test-bench-wi-fi-and-usb-adapters).
 3. Choose the storage:
    - **NVMe SSD in a USB enclosure** (best), or
    - an SD card. You can move to NVMe later with the *SD Card Copier* tool and the boot-order setting below.
@@ -88,7 +90,8 @@ something like `enx00e04c...`, turn off predictable interface names, then reboot
 
 `sudo raspi-config` → *Advanced Options* → *Network Interface Names* → **No**
 
-The installer expects exactly `eth0` = office and `eth1` = CNC.
+By default the installer uses `eth0` = office and `eth1` = CNC. Other names (a Wi-Fi
+office side, several CNC ports) are set in `.env` (`OFFICE_IF`, `CNC_IF`).
 
 ## 5. Get the code onto the Pi
 
@@ -121,6 +124,8 @@ sudo nano .env
 | `OFFICE_HOSTNAME` | The hostname from IT, e.g. `cnc-files.example.com` |
 | `CNC_UID` / `CNC_GID` | Leave `2000` unless that ID is already used on the Pi |
 | `ENABLE_NMBD` | Leave `no` unless a control can only connect by name instead of IP |
+| `OFFICE_IF` | Leave `eth0` (Wi-Fi test bench: `wlan0`) |
+| `CNC_IF` | Leave `eth1`. Several ports, e.g. `"eth1 eth2"`, are bridged as `br-cnc` (the Pi acts as the switch) |
 
 Everything else (machines, users, IPs, firewall) is configured later in the web page.
 
@@ -417,6 +422,41 @@ run 32-bit containers), only FANUC FOCAS machines are affected. Pi-only health r
 
 Not yet tested on real non-Pi hardware; the FOCAS bridge has been tested on all three
 platforms under emulation.
+
+## Test bench (Wi-Fi and USB adapters)
+
+For trying the server before IT approval, without the office cabling:
+
+- **Office side on Wi-Fi.** In Raspberry Pi Imager, set the Wi-Fi network along with SSH. Use
+  a home router or phone hotspot, not the work Wi-Fi, until IT has approved the Pi. The
+  allowed office subnet is taken from the Wi-Fi network at install time; your laptop must be
+  on it.
+- **CNC side on two USB Ethernet adapters**, one test machine or laptop on each, no switch:
+  the installer bridges them as `br-cnc` with `192.168.50.1/24`. Machine-to-machine traffic
+  passes through the bridge, as it would through a switch; nothing is routed to the office.
+- **Desktop OS is fine.** The Pi's own browser reaches the admin page at
+  `https://localhost:8443` even if a network change goes wrong. Once installed, the firewall
+  closes everything else on the office side (VNC/RDP included); use SSH, the local screen, or
+  Cockpit. Raspberry Pi Connect still works (it connects outward).
+
+`.env`:
+
+```bash
+OFFICE_IF=wlan0
+CNC_IF="eth1 eth2"
+```
+
+With two USB adapters the names `eth1`/`eth2` can swap between reboots; with a bridge it
+doesn't matter. Check the names with `ip -br link` before installing. If you change
+`OFFICE_IF`/`CNC_IF` after installing, the installer refuses to continue until
+`config/site.json` matches (edit its two `"interface"` fields, or start again).
+
+The installer tells NetworkManager never to auto-configure the CNC ports
+(`/etc/NetworkManager/conf.d/90-cnc-ports.conf`), so a replugged adapter rejoins the CNC
+network instead of trying DHCP.
+
+For the real server, rebuild with Raspberry Pi OS Lite on the SSD: onboard `eth0` to the office,
+one USB adapter (`eth1`) to the CNC switch.
 
 ## Ports for IT
 
