@@ -42,16 +42,21 @@ def cmd_render(args):
 
 
 def cmd_set_admin_password(args):
-    pw = getpass.getpass("New admin password: ")
-    if len(pw) < 10:
-        print("Use at least 10 characters.", file=sys.stderr)
-        return 1
-    if getpass.getpass("Repeat: ") != pw:
-        print("Passwords do not match.", file=sys.stderr)
-        return 1
-    config.set_admin_password_hash(generate_password_hash(pw))
-    print("Admin password set. Log in as 'admin'.")
-    return 0
+    # Ask again on a typo instead of failing: the installer stops if this fails.
+    for _ in range(3):
+        pw = getpass.getpass("New admin password (at least 10 characters): ")
+        if len(pw) < 10:
+            print("Use at least 10 characters.", file=sys.stderr)
+            continue
+        if getpass.getpass("Repeat: ") != pw:
+            print("Passwords do not match.", file=sys.stderr)
+            continue
+        config.set_admin_password_hash(generate_password_hash(pw))
+        print("Admin password set. Log in as 'admin'.")
+        return 0
+    print("No password set; run: sudo docker compose run --rm --no-deps cnc-admin "
+          "python -m cncadmin.cli set-admin-password", file=sys.stderr)
+    return 1
 
 
 def main():
