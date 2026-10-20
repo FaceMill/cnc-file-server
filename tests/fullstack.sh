@@ -30,8 +30,7 @@ if [ "${1:-}" = "--clean" ]; then clean; echo "cleaned"; exit 0; fi
 OIF=eth0; CNC_PORTS=eth1; CIF=eth1
 
 echo "== Build images"
-for i in admin samba ftp; do docker build -q --pull --network host -t "local/cnc-$i:1.0" "$PROJECT/$i" >/dev/null || exit 1; done
-docker build -q --pull --network host --platform linux/arm/v7 -t local/cnc-focas:1.0 "$PROJECT/focas" >/dev/null || exit 1
+FOCAS_PLATFORM=linux/arm/v7 "$PROJECT/host/build-images.sh" admin samba ftp focas >/dev/null || exit 1   # as host/install.sh builds
 docker pull -q caddy:2.11.7 >/dev/null
 docker build -q -t local/netclient - >/dev/null <<'EOF' || exit 1
 FROM debian:bookworm-slim

@@ -33,8 +33,7 @@ suite() {  # name, extra docker args, command
 }
 
 echo "== Build images"
-for i in admin samba ftp; do docker build -q --pull --network host -t "local/cnc-$i:1.0" "$PROJECT/$i" >/dev/null || exit 1; done
-docker build -q --pull --network host --platform linux/arm/v7 -t local/cnc-focas:1.0 "$PROJECT/focas" >/dev/null || exit 1
+FOCAS_PLATFORM=linux/arm/v7 "$PROJECT/host/build-images.sh" admin samba ftp focas >/dev/null || exit 1   # as host/install.sh builds
 # The same image for PCs (FANUC's x86-64 and 32-bit x86 builds), run under emulation here
 for p in amd64 386; do docker build -q --pull --network host --platform "linux/$p" -t "local/cnc-focas:$p" "$PROJECT/focas" >/dev/null || exit 1; done
 

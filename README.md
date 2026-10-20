@@ -166,7 +166,7 @@ using its setup sheet ([docs/cnc-client-setup.md](docs/cnc-client-setup.md)).
 ```bash
 cd /opt/cnc-server
 sudo git pull
-sudo docker compose build --pull     # also picks up Debian security updates in the images
+sudo ./host/build-images.sh          # also picks up Debian security updates in the images
 sudo docker compose up -d
 ```
 

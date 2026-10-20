@@ -231,7 +231,7 @@ Result: **no HIGH or CRITICAL finding with an available fix** in any of our imag
   - SQLite overflow needs attacker-supplied SQL; the event log uses parameterised queries.
   - glib's D-Bus code is only used by nmcli talking to the Pi's own NetworkManager.
 
-Rebuild images regularly (`docker compose build --pull`) and rescan:
+Rebuild images regularly (`sudo ./host/build-images.sh`) and rescan:
 ```bash
 docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image --severity HIGH,CRITICAL local/cnc-admin:1.0
 ```
@@ -302,4 +302,4 @@ docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image
   at a time; at 115200 baud a drip-feed runs at about 60% of line speed (fine at 4800/9600).
 - **NTLMv1 on the CNC network** (needed by Haas Classic and XP) lets anyone who can capture traffic
   there recover a machine's password hash. Keep the CNC switch physically controlled.
-- **Rebuild images periodically** (`docker compose build --pull`) to pick up Debian security updates.
+- **Rebuild images periodically** (`sudo ./host/build-images.sh`) to pick up Debian security updates.

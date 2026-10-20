@@ -241,7 +241,7 @@ Do one machine at a time, starting with the least critical:
 
 ```bash
 sudo cp libfwlib32.so /opt/cnc-server/focas/lib/libfwlib32.so   # the build for FOCAS_PLATFORM in .env
-cd /opt/cnc-server && sudo docker compose build focas-bridge && sudo docker compose up -d focas-bridge
+cd /opt/cnc-server && sudo ./host/build-images.sh focas && sudo docker compose up -d focas-bridge
 ```
 
 **A certificate from your organisation's CA:**
@@ -263,7 +263,7 @@ ssh -L 9443:127.0.0.1:9443 <user>@<pi>      # then open https://localhost:9443
 ```bash
 cd /opt/cnc-server
 sudo git pull                       # needs the token again for a private repo
-sudo docker compose build --pull
+sudo ./host/build-images.sh
 sudo docker compose up -d
 ```
 Rebuild every month or two, even with no code changes, to pick up Debian security fixes

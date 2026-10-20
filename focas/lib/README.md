@@ -11,7 +11,7 @@ of these suits the host (`FOCAS_PLATFORM` in `.env`, set by `host/install.sh`):
 | 32-bit x86 | `linux/386` | `libfwlib32-linux-x86.so.1.0.5` |
 
 - **Preferred:** use a copy licensed from FANUC (the FOCAS2 library / developer kit). Put the
-  build for your platform here as `libfwlib32.so` and rebuild: `docker compose build focas-bridge`.
+  build for your platform here as `libfwlib32.so` and rebuild: `sudo ./host/build-images.sh focas && sudo docker compose up -d focas-bridge`.
   The build stops if the file is for a different CPU.
 - **Otherwise** the build downloads the matching file from github.com/Ladder99/fanuc-driver at
   a pinned commit and checks its SHA-256.

@@ -78,7 +78,7 @@ chmod 0700 config generated
 ./host/setup-network.sh
 
 # Site config, generated files, admin password
-docker compose build --pull
+./host/build-images.sh   # not "docker compose build": see the comment in that script
 # The FOCAS library must load on this host (a 32-bit ARM container needs a kernel with
 # 32-bit support: a Pi has it, some other ARM servers don't). Only FOCAS depends on it.
 if docker run --rm --platform "$FOCAS_PLATFORM" local/cnc-focas:1.0 python -c "import focas; focas.lib()"; then
