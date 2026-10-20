@@ -95,18 +95,10 @@ office side, several CNC ports) are set in `.env` (`OFFICE_IF`, `CNC_IF`).
 
 ## 5. Get the code onto the Pi
 
-The repository is **private**, so cloning needs a GitHub credential. The simplest is a
-read-only token:
-
-1. On GitHub: *Settings → Developer settings → Personal access tokens → Fine-grained tokens →
-   Generate new token*. Repository access: only `cnc-file-server`. Permissions:
-   *Contents: Read-only*. Short expiry is fine.
-2. On the Pi:
-   ```bash
-   sudo apt install -y git
-   sudo git clone https://github.com/<your-account>/cnc-file-server.git /opt/cnc-server
-   # Username: your GitHub user. Password: paste the token (it is not stored).
-   ```
+```bash
+sudo apt install -y git
+sudo git clone https://github.com/<owner>/cnc-file-server.git /opt/cnc-server   # this repository's URL
+```
 
 (Alternatively, copy the folder from your computer: `scp -r cnc-file-server <user>@<pi>:` then
 `sudo mv ~/cnc-file-server /opt/cnc-server`.)
@@ -262,7 +254,7 @@ ssh -L 9443:127.0.0.1:9443 <user>@<pi>      # then open https://localhost:9443
 **Update:**
 ```bash
 cd /opt/cnc-server
-sudo git pull                       # needs the token again for a private repo
+sudo git pull
 sudo ./host/build-images.sh
 sudo docker compose up -d
 ```
