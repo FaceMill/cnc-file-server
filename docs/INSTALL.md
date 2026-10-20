@@ -131,6 +131,12 @@ sudo ./host/install.sh
 It's safe to run over SSH. It takes 15–30 minutes, mostly building the container images,
 and does the following:
 
+0. **Pi 5 only, first run:** a Pi 5 boots a kernel with 16K memory pages, which can't run the
+   32-bit ARM FANUC FOCAS library. The installer switches to Raspberry Pi's standard 4K-page
+   kernel (`kernel=kernel8.img` in `/boot/firmware/config.txt`, backup kept next to it) and
+   stops. **Reboot (`sudo reboot`) and run the installer again.** `getconf PAGESIZE` shows
+   `4096` once it's in effect.
+
 1. Updates the OS. Installs nftables, Cockpit, unattended upgrades and restic.
    Removes `brltty` and ModemManager, which interfere with USB serial adapters.
 2. Installs Docker, with Docker's own firewall handling turned off (this project's

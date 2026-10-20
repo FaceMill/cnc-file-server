@@ -275,9 +275,9 @@ docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image
   licence covers Ladder99's code, not necessarily FANUC's binaries. Confirm licensing with FANUC
   (FOCAS2 library) before production. A FANUC-supplied copy can be dropped into `focas/lib/`.
 - **FOCAS on the Pi 5**: FANUC has no 64-bit ARM library, so the Pi uses the 32-bit ARM one
-  (x86-64 hosts get the native x86-64 build). The Pi 5 runs 32-bit containers natively,
-  and the library's 32K segment alignment suits the Pi 5's 16K-page kernel. Verify on the real Pi;
-  the fallback is `kernel=kernel8.img` (4K pages) in `/boot/firmware/config.txt`.
+  (x86-64 hosts get the native x86-64 build). Confirmed on a real Pi 5: its default 16K-page
+  kernel can't run 32-bit ARM programs at all, so `host/pi-kernel.sh` (run by the installer)
+  switches to the standard 4K-page kernel (`kernel=kernel8.img`) and asks for a reboot.
 - **FOCAS struct layouts** follow FANUC's `fwlib32.h` (checked against the x86-64 library's
   disassembly for the 32-bit "long"). Program upload/download, status, alarm text and program
   folders must be verified on a real control (start with a test program number or scratch folder).

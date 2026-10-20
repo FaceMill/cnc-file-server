@@ -70,6 +70,7 @@ suite "appearance + logo"        "$ADMIN" "$INIT && timeout 300 python /tests/te
 mkdir -p "$SCRATCH/proj" && cp -R "$PROJECT/host" "$SCRATCH/proj/" && cp -R "$T" "$SCRATCH/proj/tests"
 suite "backup / restore drill"   "-v $SCRATCH/proj:/project:ro debian:bookworm-slim" \
     "apt-get -qq update >/dev/null && apt-get -qq install -y restic python3 >/dev/null 2>&1 && bash /project/tests/test_backup.sh"
+suite "Pi 5 kernel switch (4K pages)" "-v $SCRATCH/proj:/project:ro debian:trixie-slim" "bash /project/tests/test_pi_kernel.sh"
 for v in bookworm trixie; do
     suite "network setup (NetworkManager, $v)" "--privileged -v $SCRATCH/proj:/project:ro debian:$v" "bash /project/tests/test_setup_network.sh"
 done

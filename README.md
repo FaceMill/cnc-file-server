@@ -265,7 +265,8 @@ At runtime the Pi also has `config/` (site configuration and secrets), `generate
 
 - Not yet tested on real hardware (Pi, CNC controls, adapters).
 - **FOCAS** on a Pi uses FANUC's 32-bit ARM library in a 32-bit container (FANUC has no 64-bit
-  ARM build). Verify on the real Pi first (fallback: the 4K-page kernel, `kernel=kernel8.img`).
+  ARM build). A Pi 5's default 16K-page kernel can't run 32-bit ARM programs, so the installer
+  switches it to Raspberry Pi's standard 4K-page kernel (`kernel=kernel8.img`) and asks for a reboot.
   On an x86-64 PC the native x86-64 library is used instead; see [Other hosts](docs/INSTALL.md#other-hosts-not-a-pi).
 - FOCAS: controls without program folders (16i/18i/21i, 0i-D) use O1–O9999. Program folders, named and
   8-digit programs need a control that has them (30i/31i/32i, 0i-F); only the CNC's own memory

@@ -23,6 +23,11 @@ if [ -z "${FOCAS_PLATFORM:-}" ]; then
     export FOCAS_PLATFORM
 fi
 echo "FOCAS bridge platform: $FOCAS_PLATFORM"
+# 32-bit ARM needs a 4K-page kernel (a Pi 5 boots a 16K one by default): switch, then stop
+# until the reboot.
+if [ "$FOCAS_PLATFORM" = linux/arm/v7 ]; then
+    ./host/pi-kernel.sh || exit 1
+fi
 
 # Network ports (OFFICE_IF / CNC_IF in .env). Several CNC ports are bridged as br-cnc.
 OFFICE_IF=${OFFICE_IF:-eth0}
