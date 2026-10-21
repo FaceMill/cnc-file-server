@@ -45,6 +45,32 @@ if [ -f config/site.json ]; then
     fi
 fi
 
+# Office side: the office network (client, the default) or the Pi's own setup hotspot.
+OFFICE_MODE=${OFFICE_MODE:-client}
+case "$OFFICE_MODE" in
+client)
+    # Coming back from the hotspot: rejoin the saved Wi-Fi first (updates need the internet).
+    ./host/setup-hotspot.sh off >/dev/null 2>&1 || true ;;
+hotspot)
+    if [ -n "${SSH_CONNECTION:-}" ] && [ "${HOTSPOT_OVER_SSH:-}" != 1 ]; then
+        echo "OFFICE_MODE=hotspot turns $OFFICE_IF into an access point at the end, which ends an SSH" >&2
+        echo "session over it (and the installer with it). Run the installer on the Pi's own screen and" >&2
+        echo "keyboard, or set HOTSPOT_OVER_SSH=1 if you're connected another way (e.g. a cable)." >&2
+        exit 1
+    fi
+    HOTSPOT_SSID=${HOTSPOT_SSID:-cnc-setup-$(hostname -s)}
+    if [ -z "${HOTSPOT_PASSWORD:-}" ]; then
+        HOTSPOT_PASSWORD=$(tr -dc 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789' </dev/urandom | head -c 12)
+        printf '\n# Set by host/install.sh: password of the setup hotspot\nHOTSPOT_PASSWORD=%s\n' "$HOTSPOT_PASSWORD" >> .env
+    fi
+    chmod 0600 .env
+    export HOTSPOT_SSID HOTSPOT_PASSWORD
+    echo "Office side: setup hotspot '$HOTSPOT_SSID' on $OFFICE_IF (switched on at the end)" ;;
+*)
+    echo "OFFICE_MODE must be client or hotspot (not '$OFFICE_MODE')." >&2; exit 1 ;;
+esac
+export OFFICE_MODE
+
 apt-get update
 apt-get -y full-upgrade
 apt-get install -y nftables cockpit unattended-upgrades restic curl smartmontools
@@ -93,7 +119,14 @@ else
     echo "         won't work; everything else will. See focas/lib/README.md." >&2
 fi
 if [ ! -f config/site.json ]; then
-    docker compose run --rm --no-deps cnc-admin python -m cncadmin.cli init --office-if "$OFFICE_IF" --cnc-if "$CNC_NET_IF"
+    subnet_arg=()
+    [ "$OFFICE_MODE" = hotspot ] && subnet_arg=(--office-subnet 10.42.0.0/24)
+    docker compose run --rm --no-deps cnc-admin python -m cncadmin.cli init --office-if "$OFFICE_IF" --cnc-if "$CNC_NET_IF" "${subnet_arg[@]}"
+fi
+if [ "$OFFICE_MODE" = hotspot ]; then
+    docker compose run --rm --no-deps cnc-admin python -m cncadmin.cli office-mode --hotspot "$HOTSPOT_SSID"
+else
+    docker compose run --rm --no-deps cnc-admin python -m cncadmin.cli office-mode --client
 fi
 docker compose run --rm --no-deps cnc-admin python -m cncadmin.cli render
 docker compose run --rm --no-deps cnc-admin python -m cncadmin.cli set-admin-password
@@ -123,8 +156,16 @@ python3 host/health.py || true
 host/backup.sh || true
 
 echo
-echo "Done. Admin page: https://$OFFICE_HOSTNAME:8443  (user: admin)"
-echo "      Cockpit:    https://$OFFICE_HOSTNAME:9090  (Pi login)"
+if [ "$OFFICE_MODE" = hotspot ]; then
+    # Last: from here on the Pi's Wi-Fi is the access point (no internet over it).
+    ./host/setup-hotspot.sh on
+    echo
+    echo "Done. Join the Wi-Fi network above, then: admin page https://10.42.0.1:8443  (user: admin)"
+    echo "      Cockpit:    https://10.42.0.1:9090  (Pi login)"
+else
+    echo "Done. Admin page: https://$OFFICE_HOSTNAME:8443  (user: admin)"
+    echo "      Cockpit:    https://$OFFICE_HOSTNAME:9090  (Pi login)"
+fi
 echo "      Portainer is off; see docker-compose.yml to enable it behind an SSH tunnel."
 echo
 echo "Next: set up backups with  sudo $PROJECT_DIR/host/setup-backup.sh"

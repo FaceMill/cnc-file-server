@@ -129,6 +129,12 @@ RESERVED_NAMES |= SYSTEM_ACCOUNTS
 PASSWORD_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
 
+# Setup hotspot (OFFICE_MODE=hotspot): the Pi is a Wi-Fi access point and the office side;
+# NetworkManager hands out 10.42.0.x addresses to the laptops that join it.
+HOTSPOT_ADDRESS = "10.42.0.1/24"
+HOTSPOT_SUBNET = "10.42.0.0/24"
+
+
 def gen_password(length=8):
     return "".join(secrets.choice(PASSWORD_CHARS) for _ in range(length))
 
@@ -172,6 +178,7 @@ def load():
             m["serial"] = normalize_serial(m["serial"])
         if "focas" in m:
             m["focas"] = normalize_focas(m["focas"])
+    site["office"].setdefault("hotspot", False)
     site["recycle"] = {**RECYCLE_DEFAULTS, **site.get("recycle", {})}  # configs from before these settings
     site["alerts"] = {**ALERT_DEFAULTS, **site.get("alerts", {})}
     from . import appearance
@@ -265,6 +272,12 @@ def validate(site):
         if office["gateway"]:
             office["gateway"] = str(_ipv4(office["gateway"], "Office gateway"))
         office["address"] = str(iface)
+    if office.get("hotspot"):
+        ssid = office.get("hotspot_ssid", "")
+        if not isinstance(ssid, str) or not 1 <= len(ssid.encode()) <= 32 or any(ord(c) < 32 or ord(c) == 127 for c in ssid):
+            raise ValueError("Hotspot name (SSID): 1-32 characters, no control characters")
+        if HOTSPOT_SUBNET not in office["allowed_subnets"]:
+            office["allowed_subnets"].append(HOTSPOT_SUBNET)  # never lock out the hotspot's own laptops
     if not office["allowed_subnets"]:
         raise ValueError("At least one allowed office subnet is required")
     office_nets = [_subnet(s, "Allowed office subnet") for s in office["allowed_subnets"]]

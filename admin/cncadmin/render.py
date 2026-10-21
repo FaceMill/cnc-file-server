@@ -48,7 +48,8 @@ def render_all(site):
     ctx = {"site": site, "office": site["office"], "cnc": site["cnc"],
            "office_users": site["office_users"], "smb_machines": smb, "ftp_machines": ftp,
            "serial_tcp_machines": serial_tcp, "cnc_ip": config.cnc_server_ip(site),
-           "pasv_min": FTP_PASSIVE_PORTS[0], "pasv_max": FTP_PASSIVE_PORTS[1]}
+           "pasv_min": FTP_PASSIVE_PORTS[0], "pasv_max": FTP_PASSIVE_PORTS[1],
+           "hotspot_subnet": config.HOTSPOT_SUBNET}
 
     def tpl(name):
         return _env.get_template(name).render(ctx)

@@ -3,6 +3,7 @@
     python -m cncadmin.cli init [--office-subnet CIDR] [--force]
     python -m cncadmin.cli render
     python -m cncadmin.cli set-admin-password
+    python -m cncadmin.cli office-mode --hotspot SSID | --client [--office-subnet CIDR]
 """
 import argparse
 import getpass
@@ -41,6 +42,36 @@ def cmd_render(args):
     return 0
 
 
+def cmd_office_mode(args):
+    """Record whether the office side is the Pi's setup hotspot (host/setup-hotspot.sh runs
+    the hotspot itself); re-renders the firewall and Samba config."""
+    site = config.load()
+    office = site["office"]
+    if args.hotspot:
+        office.update(hotspot=True, hotspot_ssid=args.hotspot, method="auto", address="", gateway="", dns=[])
+        if config.HOTSPOT_SUBNET not in office["allowed_subnets"]:
+            office["allowed_subnets"].append(config.HOTSPOT_SUBNET)
+        what = f"the setup hotspot '{args.hotspot}' ({config.HOTSPOT_SUBNET})"
+    else:
+        was_hotspot = office.get("hotspot")
+        office["hotspot"] = False
+        office.pop("hotspot_ssid", None)
+        if was_hotspot:
+            office["allowed_subnets"] = [s for s in office["allowed_subnets"] if s != config.HOTSPOT_SUBNET]
+        detect = was_hotspot or not office["allowed_subnets"]  # back on the office network: allow its subnet
+        subnet = args.office_subnet or (system.interface_subnet(office["interface"]) if detect else None)
+        if subnet and subnet not in office["allowed_subnets"]:
+            office["allowed_subnets"].append(subnet)
+        if not office["allowed_subnets"]:
+            print(f"Could not detect the subnet of {office['interface']}; pass --office-subnet.", file=sys.stderr)
+            return 1
+        what = f"the office network ({', '.join(office['allowed_subnets'])})"
+    config.save(site)
+    cmd_render(args)
+    print(f"Office side: {what}.")
+    return 0
+
+
 def cmd_set_admin_password(args):
     # Ask again on a typo instead of failing: the installer stops if this fails.
     for _ in range(3):
@@ -70,6 +101,12 @@ def main():
     p.set_defaults(func=cmd_init)
     sub.add_parser("render").set_defaults(func=cmd_render)
     sub.add_parser("set-admin-password").set_defaults(func=cmd_set_admin_password)
+    p = sub.add_parser("office-mode")
+    g = p.add_mutually_exclusive_group(required=True)
+    g.add_argument("--hotspot", metavar="SSID")
+    g.add_argument("--client", action="store_true")
+    p.add_argument("--office-subnet")
+    p.set_defaults(func=cmd_office_mode)
     args = parser.parse_args()
     sys.exit(args.func(args))
 

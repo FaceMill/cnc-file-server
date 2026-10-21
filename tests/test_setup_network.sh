@@ -92,6 +92,32 @@ check "after a restart: bridge, ports and address come back" \
 check "after a restart: office back, no automatic connections recreated" \
       '[ "$(addr wlan0)" = 10.20.0.10/16 ] && ! profiles | grep -q "Wired connection"'
 
+# --- setup hotspot (OFFICE_MODE=hotspot) -------------------------------------------------
+# A container has no Wi-Fi radio: the profiles are real, activating the access point isn't
+# tested here (HOTSPOT_TEST_ANY_DEVICE / HOTSPOT_TEST_NO_UP).
+HOTSPOT=${HOTSPOT:-/project/host/setup-hotspot.sh}
+H() { OFFICE_IF=wlan0 HOTSPOT_SSID=cnc-setup-test HOTSPOT_PASSWORD="$1" HOTSPOT_TEST_NO_UP=1 HOTSPOT_TEST_ANY_DEVICE="${2:-1}" bash "$HOTSPOT" "$3"; }
+check "hotspot refuses a port that isn't Wi-Fi" '! H Secret-pass-1 0 on >/dev/null 2>&1'
+check "hotspot refuses a password under 8 characters" '! H short 1 on >/dev/null 2>&1'
+H Secret-pass-1 1 on >/tmp/hs-on.log 2>&1; rc=$?
+check "hotspot on: succeeds" '[ $rc -eq 0 ] && grep -q "Wi-Fi network:  cnc-setup-test" /tmp/hs-on.log'
+check "office-net is now an access point: SSID, WPA2, shared (DHCP), 10.42.0.1/24, priority 100" \
+      '[ "$(nmcli -g 802-11-wireless.mode,802-11-wireless.ssid,802-11-wireless-security.key-mgmt,ipv4.method,ipv4.addresses,connection.autoconnect-priority connection show office-net)" = "$(printf "ap\ncnc-setup-test\nwpa-psk\nshared\n10.42.0.1/24\n100")" ]'
+check "hotspot password stored in its profile" '[ "$(nmcli -s -g 802-11-wireless-security.psk connection show office-net)" = Secret-pass-1 ]'
+check "previous Wi-Fi kept as office-net-client, not auto-connecting, settings intact" \
+      '[ "$(nmcli -g connection.autoconnect,ipv4.addresses connection show office-net-client)" = "$(printf "no\n10.20.0.10/16")" ]'
+check "hotspot status reports on" 'H Secret-pass-1 1 status | grep -q "Setup hotspot: on (cnc-setup-test"'
+OFFICE_IF=wlan0 OFFICE_MODE=hotspot CNC_IF="eth1 eth2" bash "$SETUP" >/tmp/run-hs.log 2>&1; rc=$?
+check "network setup in hotspot mode leaves the office side to the hotspot" \
+      '[ $rc -eq 0 ] && nmcli connection show office-net-client >/dev/null && [ "$(nmcli -g 802-11-wireless.mode connection show office-net)" = ap ] && [ "$(master eth1)" = br-cnc ]'
+H Secret-pass-1 1 on >/dev/null 2>&1
+check "hotspot on again: no duplicates, client copy kept" '[ "$(nmcli -g NAME connection show | grep -c "^office-net")" = 2 ]'
+H Secret-pass-1 1 off >/tmp/hs-off.log 2>&1; rc=$?
+check "hotspot off: the previous Wi-Fi is office-net again, auto-connecting, settings intact" \
+      '[ $rc -eq 0 ] && [ "$(nmcli -g 802-11-wireless.mode connection show office-net 2>/dev/null)" != ap ] && [ "$(nmcli -g connection.autoconnect,ipv4.addresses connection show office-net)" = "$(printf "yes\n10.20.0.10/16")" ] && ! nmcli connection show office-net-client >/dev/null 2>&1'
+check "hotspot off when it's already off: harmless" 'H Secret-pass-1 1 off >/dev/null 2>&1 && nmcli connection show office-net >/dev/null'
+check "hotspot status reports off" 'H Secret-pass-1 1 status | grep -q "Setup hotspot: off"'
+
 # --- bad input ----------------------------------------------------------------------
 check "refuses a CNC port that is the office port" '! OFFICE_IF=wlan0 CNC_IF="eth1 wlan0" bash "$SETUP" >/dev/null 2>&1'
 check "refuses an interface name with shell characters" '! OFFICE_IF=wlan0 CNC_IF="eth1;reboot" bash "$SETUP" >/dev/null 2>&1'

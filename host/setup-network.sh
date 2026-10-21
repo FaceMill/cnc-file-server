@@ -2,7 +2,8 @@
 # Prepares NetworkManager connections (Raspberry Pi OS Bookworm or Trixie) with the names
 # cnc-admin manages:
 #   office-net  OFFICE_IF (eth0, or wlan0 on a Wi-Fi test bench); the active connection is
-#               renamed, so its DHCP/static settings (and Wi-Fi password) are kept
+#               renamed, so its DHCP/static settings (and Wi-Fi password) are kept.
+#               OFFICE_MODE=hotspot: left to host/setup-hotspot.sh
 #   cnc-net     the CNC network, static, no gateway:
 #               one port   (CNC_IF=eth1):        on that port
 #               several    (CNC_IF="eth1 eth2"): bridge br-cnc over all of them, so the Pi
@@ -22,13 +23,17 @@ for p in "${CNC_PORTS[@]}"; do
     [ "$p" != "$OFFICE_IF" ] || { echo "$p can't be both the office and a CNC port." >&2; exit 1; }
 done
 
-# Rename the connection currently active on the office port (no reconnect, safe over SSH).
-current=$(nmcli -g GENERAL.CONNECTION device show "$OFFICE_IF" 2>/dev/null || true)
-if [ -n "$current" ] && [ "$current" != office-net ]; then
-    nmcli connection modify "$current" connection.id office-net
+# Office side. OFFICE_MODE=hotspot: host/setup-hotspot.sh makes OFFICE_IF the access point
+# at the end of the install (the Wi-Fi is still needed for downloads until then).
+if [ "${OFFICE_MODE:-client}" != hotspot ]; then
+    # Rename the connection currently active on the office port (no reconnect, safe over SSH).
+    current=$(nmcli -g GENERAL.CONNECTION device show "$OFFICE_IF" 2>/dev/null || true)
+    if [ -n "$current" ] && [ "$current" != office-net ]; then
+        nmcli connection modify "$current" connection.id office-net
+    fi
+    [ "$(nmcli -g GENERAL.CONNECTION device show "$OFFICE_IF" 2>/dev/null || true)" = office-net ] || {
+        echo "No active connection on $OFFICE_IF; connect it to the office network first (check OFFICE_IF)." >&2; exit 1; }
 fi
-[ "$(nmcli -g GENERAL.CONNECTION device show "$OFFICE_IF" 2>/dev/null || true)" = office-net ] || {
-    echo "No active connection on $OFFICE_IF; connect it to the office network first (check OFFICE_IF)." >&2; exit 1; }
 
 # CNC ports: NetworkManager must never set them up by itself (it creates a DHCP "Wired
 # connection N" for any port without a profile, e.g. while ours are being replaced).

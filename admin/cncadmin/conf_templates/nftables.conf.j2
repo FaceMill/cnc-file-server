@@ -16,6 +16,13 @@ table inet filter {
 
 		# Office: SSH, web (443 redirects to the admin page on 8443, Cockpit 9090), SMB3
 		iifname "{{ office.interface }}" ip saddr { {{ office.allowed_subnets | join(', ') }} } tcp dport { 22, 80, 443, 445, 8443, 9090 } accept
+{% if office.get('hotspot') %}
+
+		# Setup hotspot: the Pi is the access point. DHCP (requests come from 0.0.0.0) and DNS
+		# for the laptops that join it; nothing is routed onwards (forward chain below).
+		iifname "{{ office.interface }}" udp sport 68 udp dport 67 accept
+		iifname "{{ office.interface }}" ip saddr {{ hotspot_subnet }} meta l4proto { tcp, udp } th dport 53 accept
+{% endif %}
 {% if smb_machines %}
 
 		# SMB machines: SMB1/2/3 and NetBIOS

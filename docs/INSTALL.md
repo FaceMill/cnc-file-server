@@ -444,6 +444,38 @@ OFFICE_IF=wlan0
 CNC_IF="eth1 eth2"
 ```
 
+### Setup hotspot (no office network at all)
+
+The Pi can be its own Wi-Fi access point instead: your laptop joins the Pi's network and gets
+the admin page and the office share, with no office network or IT involvement. In `.env`:
+
+```bash
+OFFICE_IF=wlan0
+OFFICE_MODE=hotspot
+HOTSPOT_SSID=cnc-setup            # optional; default cnc-setup-<hostname>
+# HOTSPOT_PASSWORD=               # optional; the installer creates one and prints it
+CNC_IF="eth0 eth1"                # the Pi's own port is free for a machine
+```
+
+- **Run the installer on the Pi's own screen and keyboard** (the desktop terminal), not over
+  SSH on the Wi-Fi: it switches the Wi-Fi to the hotspot as its last step, which would cut the
+  session (it refuses unless `HOTSPOT_OVER_SSH=1`). It still needs internet until then, so the Pi
+  must be on a Wi-Fi network (or cable) when you start it.
+- At the end it prints the network name and password. On the laptop, join that Wi-Fi, then
+  open **https://10.42.0.1:8443** (accept the certificate warning). The office share is
+  `\\10.42.0.1\CNC`; Cockpit is `https://10.42.0.1:9090`.
+- The hotspot has **no internet** and **no route to the CNC network** (the firewall drops all
+  forwarding). The Pi has one Wi-Fi radio, so while the hotspot is on it isn't on any other
+  Wi-Fi network. For updates, or to move to a real office network: set `OFFICE_MODE=client` and
+  run the installer again. It first rejoins the Wi-Fi network the Pi was on before (kept, with
+  its password), then carries on.
+- By hand: `sudo ./host/setup-hotspot.sh status`, `... off` (back to the previous Wi-Fi),
+  `... on`.
+- The **Wi-Fi country** must be set (Raspberry Pi Imager does this; otherwise
+  `sudo raspi-config` → *Localisation Options* → *WLAN Country*), or the hotspot won't start.
+- Not tested on real Wi-Fi hardware yet; the profiles, firewall and admin page are (in
+  containers, with real NetworkManager and nft).
+
 With two USB adapters the names `eth1`/`eth2` can swap between reboots; with a bridge it
 doesn't matter. Check the names with `ip -br link` before installing. If you change
 `OFFICE_IF`/`CNC_IF` after installing, the installer refuses to continue until

@@ -897,6 +897,10 @@ def network_cnc():
 @login_required
 def network_office():
     site = config.load()
+    if site["office"].get("hotspot"):
+        flash("The office side is the Pi's setup hotspot; its address is fixed. To use a real office "
+              "network, set OFFICE_MODE=client in .env and run the installer again.", "error")
+        return redirect(url_for("web.network"))
     new = copy.deepcopy(site["office"])
     new["method"] = request.form.get("method", "auto")
     new["address"] = request.form.get("address", "").strip() if new["method"] == "manual" else ""
