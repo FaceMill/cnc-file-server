@@ -128,4 +128,16 @@ check "refuses a CNC port that is the office port" '! OFFICE_IF=wlan0 CNC_IF="et
 check "refuses an interface name with shell characters" '! OFFICE_IF=wlan0 CNC_IF="eth1;reboot" bash "$SETUP" >/dev/null 2>&1'
 check "refuses an office port with no connection" '! OFFICE_IF=eth9 CNC_IF=eth1 bash "$SETUP" >/dev/null 2>&1'
 
+# --- the office side moves to another port (e.g. a Pi 5 from its cable to Wi-Fi) -------
+# Swapped roles here: office wlan0 -> eth2 (already connected), wlan0 becomes the CNC port.
+OFFICE_IF=wlan0 CNC_IF=eth1 bash "$SETUP" >/dev/null 2>&1   # frees eth2
+nmcli connection add type ethernet ifname eth2 con-name "lab-wifi" ipv4.method manual ipv4.addresses 10.30.0.10/16 >/dev/null
+nmcli connection up lab-wifi >/dev/null; sleep 2
+OFFICE_IF=eth2 CNC_IF=wlan0 bash "$SETUP" >/tmp/run-move.log 2>&1; rc=$?
+sleep 3
+check "office moved: script succeeds, says the old office-net goes" '[ $rc -eq 0 ] && grep -q "removing the previous office-net" /tmp/run-move.log'
+check "office moved: exactly one office-net, on the new port, settings kept" \
+      '[ "$(nmcli -g NAME connection show | grep -cx office-net)" = 1 ] && [ "$(nmcli -g GENERAL.CONNECTION device show eth2)" = office-net ] && [ "$(addr eth2)" = 10.30.0.10/16 ]'
+check "office moved: the old port is now the CNC port" '[ "$(nmcli -g GENERAL.CONNECTION device show wlan0)" = cnc-net ] && [ "$(addr wlan0)" = 192.168.50.1/24 ]'
+
 [ $fails -eq 0 ] && echo "ALL PASSED" || { echo "$fails FAILED"; tail -20 /tmp/run2.log; exit 1; }
