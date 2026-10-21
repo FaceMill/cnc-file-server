@@ -276,6 +276,9 @@ def validate(site):
         ssid = office.get("hotspot_ssid", "")
         if not isinstance(ssid, str) or not 1 <= len(ssid.encode()) <= 32 or any(ord(c) < 32 or ord(c) == 127 for c in ssid):
             raise ValueError("Hotspot name (SSID): 1-32 characters, no control characters")
+        pw = office.get("hotspot_password", "")
+        if not isinstance(pw, str) or not re.fullmatch(r"[\x20-\x7e]{8,63}", pw):
+            raise ValueError("Hotspot password: 8-63 characters (letters, digits, punctuation, spaces)")
         if HOTSPOT_SUBNET not in office["allowed_subnets"]:
             office["allowed_subnets"].append(HOTSPOT_SUBNET)  # never lock out the hotspot's own laptops
     if not office["allowed_subnets"]:

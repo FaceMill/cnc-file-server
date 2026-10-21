@@ -85,6 +85,9 @@ services:
       - /srv/cnc:/srv/cnc
       - /var/run/docker.sock:/var/run/docker.sock
       - /run/dbus/system_bus_socket:/run/dbus/system_bus_socket
+      # host/setup-hotspot.sh switches the setup hotspot (Settings page) the same way as on the
+      # command line. The folder, not the file: git pull replaces files, a file mount keeps the old one.
+      - ./host:/app/host:ro
 
   caddy:
     image: caddy:2.11.7

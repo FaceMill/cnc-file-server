@@ -45,25 +45,33 @@ if [ -f config/site.json ]; then
     fi
 fi
 
-# Office side: the office network (client, the default) or the Pi's own setup hotspot.
-OFFICE_MODE=${OFFICE_MODE:-client}
+# Office side: the office network (client) or the Pi's own setup hotspot. Unset: whatever
+# config/site.json records (the admin page's Settings can switch it), else client.
+site_office() {  # a setting of the office side recorded in config/site.json
+    [ -f config/site.json ] || return 0
+    python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["office"].get(sys.argv[2], ""))' config/site.json "$1"
+}
+if [ -z "${OFFICE_MODE:-}" ]; then
+    OFFICE_MODE=client; [ "$(site_office hotspot)" = True ] && OFFICE_MODE=hotspot
+fi
 case "$OFFICE_MODE" in
 client)
     # Coming back from the hotspot: rejoin the saved Wi-Fi first (updates need the internet).
     ./host/setup-hotspot.sh off >/dev/null 2>&1 || true ;;
 hotspot)
-    if [ -n "${SSH_CONNECTION:-}" ] && [ "${HOTSPOT_OVER_SSH:-}" != 1 ]; then
+    # Name and password: .env, else the ones recorded before, else new ones.
+    HOTSPOT_SSID=${HOTSPOT_SSID:-$(site_office hotspot_ssid)}
+    HOTSPOT_SSID=${HOTSPOT_SSID:-cnc-setup-$(hostname -s)}
+    HOTSPOT_PASSWORD=${HOTSPOT_PASSWORD:-$(site_office hotspot_password)}
+    HOTSPOT_PASSWORD=${HOTSPOT_PASSWORD:-$(tr -dc 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789' </dev/urandom | head -c 12)}
+    # Switching it on ends an SSH session over the Wi-Fi (not when it's already on as is).
+    if [ -n "${SSH_CONNECTION:-}" ] && [ "${HOTSPOT_OVER_SSH:-}" != 1 ] \
+        && ! ./host/setup-hotspot.sh status 2>/dev/null | grep -qF "($HOTSPOT_SSID, active)"; then
         echo "OFFICE_MODE=hotspot turns $OFFICE_IF into an access point at the end, which ends an SSH" >&2
         echo "session over it (and the installer with it). Run the installer on the Pi's own screen and" >&2
         echo "keyboard, or set HOTSPOT_OVER_SSH=1 if you're connected another way (e.g. a cable)." >&2
         exit 1
     fi
-    HOTSPOT_SSID=${HOTSPOT_SSID:-cnc-setup-$(hostname -s)}
-    if [ -z "${HOTSPOT_PASSWORD:-}" ]; then
-        HOTSPOT_PASSWORD=$(tr -dc 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789' </dev/urandom | head -c 12)
-        printf '\n# Set by host/install.sh: password of the setup hotspot\nHOTSPOT_PASSWORD=%s\n' "$HOTSPOT_PASSWORD" >> .env
-    fi
-    chmod 0600 .env
     export HOTSPOT_SSID HOTSPOT_PASSWORD
     echo "Office side: setup hotspot '$HOTSPOT_SSID' on $OFFICE_IF (switched on at the end)" ;;
 *)
@@ -124,7 +132,7 @@ if [ ! -f config/site.json ]; then
     docker compose run --rm --no-deps cnc-admin python -m cncadmin.cli init --office-if "$OFFICE_IF" --cnc-if "$CNC_NET_IF" "${subnet_arg[@]}"
 fi
 if [ "$OFFICE_MODE" = hotspot ]; then
-    docker compose run --rm --no-deps cnc-admin python -m cncadmin.cli office-mode --hotspot "$HOTSPOT_SSID"
+    docker compose run --rm --no-deps cnc-admin python -m cncadmin.cli office-mode --hotspot "$HOTSPOT_SSID" --password "$HOTSPOT_PASSWORD"
 else
     docker compose run --rm --no-deps cnc-admin python -m cncadmin.cli office-mode --client
 fi

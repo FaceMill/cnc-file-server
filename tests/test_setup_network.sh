@@ -110,8 +110,13 @@ check "hotspot status reports on" 'H Secret-pass-1 1 status | grep -q "Setup hot
 OFFICE_IF=wlan0 OFFICE_MODE=hotspot CNC_IF="eth1 eth2" bash "$SETUP" >/tmp/run-hs.log 2>&1; rc=$?
 check "network setup in hotspot mode leaves the office side to the hotspot" \
       '[ $rc -eq 0 ] && nmcli connection show office-net-client >/dev/null && [ "$(nmcli -g 802-11-wireless.mode connection show office-net)" = ap ] && [ "$(master eth1)" = br-cnc ]'
-H Secret-pass-1 1 on >/dev/null 2>&1
-check "hotspot on again: no duplicates, client copy kept" '[ "$(nmcli -g NAME connection show | grep -c "^office-net")" = 2 ]'
+uuid=$(nmcli -g connection.uuid connection show office-net)
+H Secret-pass-1 1 on >/tmp/hs-again.log 2>&1
+check "hotspot on again, same settings: left alone (no reconnect), details printed" \
+      '[ "$(nmcli -g connection.uuid connection show office-net)" = "$uuid" ] && grep -q "already on" /tmp/hs-again.log && grep -q "Password:       Secret-pass-1" /tmp/hs-again.log'
+H Secret-pass-2 1 on >/dev/null 2>&1
+check "hotspot on with a new password: profile replaced, no duplicates, client copy kept" \
+      '[ "$(nmcli -s -g 802-11-wireless-security.psk connection show office-net)" = Secret-pass-2 ] && [ "$(nmcli -g NAME connection show | grep -c "^office-net")" = 2 ]'
 H Secret-pass-1 1 off >/tmp/hs-off.log 2>&1; rc=$?
 check "hotspot off: the previous Wi-Fi is office-net again, auto-connecting, settings intact" \
       '[ $rc -eq 0 ] && [ "$(nmcli -g 802-11-wireless.mode connection show office-net 2>/dev/null)" != ap ] && [ "$(nmcli -g connection.autoconnect,ipv4.addresses connection show office-net)" = "$(printf "yes\n10.20.0.10/16")" ] && ! nmcli connection show office-net-client >/dev/null 2>&1'

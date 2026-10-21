@@ -17,6 +17,9 @@ from . import config, system
 log = logging.getLogger("cncadmin")
 
 CONFIRM_SECONDS = 120
+# Switching the setup hotspot on or off: time to move the laptop to the other Wi-Fi network
+# and log in again there.
+HOTSPOT_CONFIRM_SECONDS = 300
 APPLY_DELAY_SECONDS = 2  # let the HTTP response reach the browser first
 RETRY_SECONDS = 60
 PENDING_FILE = os.path.join(config.CONFIG_DIR, "pending-office.json")
@@ -24,7 +27,7 @@ PENDING_FILE = os.path.join(config.CONFIG_DIR, "pending-office.json")
 
 class OfficeChange:
     def __init__(self):
-        self.pending = None  # {"old": office, "new": office, "deadline": epoch}
+        self.pending = None  # {"old": office, "new": office, "deadline": epoch, "seconds": n}
         self.last_error = None
         self._timer = None
         self._generation = 0  # bumped by every start/clear, so stale apply threads can tell
@@ -51,7 +54,7 @@ class OfficeChange:
             "A network change was left unconfirmed when the admin service restarted; "
             "previous settings restored.",)).start()
 
-    def start(self, new_office):
+    def start(self, new_office, confirm_seconds=None):
         with config.lock:
             if self.pending:
                 raise ValueError("Another network change is already waiting for confirmation")
@@ -60,7 +63,8 @@ class OfficeChange:
             trial["office"] = new_office
             config.validate(trial)
             # The confirmation countdown starts once the change is actually applied.
-            self.pending = {"old": site["office"], "new": trial["office"], "deadline": None}
+            self.pending = {"old": site["office"], "new": trial["office"], "deadline": None,
+                            "seconds": confirm_seconds or CONFIRM_SECONDS}
             self.last_error = None
             self._generation += 1
             config._write_private(PENDING_FILE, json.dumps(self.pending))
@@ -82,21 +86,27 @@ class OfficeChange:
         with config.lock:
             if not self.pending or self._generation != generation:
                 return
-            self.pending["deadline"] = time.time() + CONFIRM_SECONDS
+            seconds = self.pending.get("seconds") or CONFIRM_SECONDS
+            self.pending["deadline"] = time.time() + seconds
             config._write_private(PENDING_FILE, json.dumps(self.pending))
-            self._timer = threading.Timer(CONFIRM_SECONDS, self._timeout)
+            self._timer = threading.Timer(seconds, self._timeout)
             self._timer.daemon = True
             self._timer.start()
 
     def _timeout(self):
-        log.warning("Office network change not confirmed in %ss, reverting", CONFIRM_SECONDS)
+        log.warning("Office network change not confirmed in %ss, reverting", self.pending and self.pending.get("seconds"))
         self.revert("Not confirmed in time; previous network settings restored.")
 
     def _apply(self, office):
         with config.lock:
             site = config.load()
             site["office"] = office
-            system.nm_set_office(office)
+            if office.get("hotspot"):
+                system.hotspot_on(office)
+            else:
+                if self.pending and (self.pending["old"].get("hotspot") or self.pending["new"].get("hotspot")):
+                    system.hotspot_off(office)  # back to the Wi-Fi network from before the hotspot
+                system.nm_set_office(office)
             system.apply_site(site)
 
     def confirm(self):

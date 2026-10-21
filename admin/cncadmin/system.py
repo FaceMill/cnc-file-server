@@ -32,11 +32,12 @@ FTP_CNC = "ftp-cnc"
 SERVICES = [SAMBA_OFFICE, SAMBA_CNC, FTP_CNC, "focas-bridge", "filebrowser", "caddy", "portainer", "cnc-admin"]
 
 
-def run(cmd, *, host_change=True):
+def run(cmd, *, host_change=True, env=None, timeout=60):
     if DRY_RUN and host_change:
         log.info("DRY RUN: %s", " ".join(cmd))
         return ""
-    res = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+    res = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout,
+                         env={**os.environ, **env} if env else None)
     if res.returncode != 0:
         raise RuntimeError(f"{cmd[0]} failed: {(res.stderr or res.stdout).strip()}")
     return res.stdout
@@ -167,6 +168,29 @@ def nm_set_office(office):
                 "ipv4.gateway", office["gateway"], "ipv4.dns", " ".join(office["dns"])]
     run(["nmcli", "connection", "modify", OFFICE_CONN, *args])
     run(["nmcli", "connection", "up", OFFICE_CONN])
+
+
+# The setup hotspot: host/setup-hotspot.sh, mounted into this container (docker-compose.yml),
+# so the installer, the command line and this admin page all switch it the same way.
+HOTSPOT_SCRIPT = os.environ.get("CNC_HOTSPOT_SCRIPT", "/app/host/setup-hotspot.sh")
+
+
+def hotspot_on(office):
+    run(["bash", HOTSPOT_SCRIPT, "on"], timeout=120, env={
+        "OFFICE_IF": office["interface"], "HOTSPOT_SSID": office["hotspot_ssid"],
+        "HOTSPOT_PASSWORD": office["hotspot_password"]})
+
+
+def hotspot_off(office):
+    run(["bash", HOTSPOT_SCRIPT, "off"], timeout=120, env={"OFFICE_IF": office["interface"]})
+
+
+def device_type(ifname):
+    """NetworkManager's type for a port ("wifi", "ethernet", ...), or None if unknown."""
+    try:
+        return run(["nmcli", "-g", "GENERAL.TYPE", "device", "show", ifname], host_change=False).strip() or None
+    except Exception:
+        return None
 
 
 def nm_set_cnc(address):

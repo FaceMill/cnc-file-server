@@ -8,7 +8,9 @@
 #   sudo ./host/setup-hotspot.sh off      back to the Wi-Fi network the Pi was on before
 #   sudo ./host/setup-hotspot.sh status
 #
-# Settings from .env: OFFICE_IF (the Wi-Fi port, wlan0), HOTSPOT_SSID, HOTSPOT_PASSWORD.
+# OFFICE_IF (the Wi-Fi port, wlan0) comes from .env. The hotspot name and password come from
+# config/site.json (set by the installer or the admin page's Settings), unless the caller
+# passes HOTSPOT_SSID / HOTSPOT_PASSWORD (the admin page does).
 # The Wi-Fi client connection that was active is kept (as office-net-client, with its
 # password) so "off" can restore it. The Pi has one radio: while the hotspot is on, it is
 # not on any other Wi-Fi network, so it has no internet unless a cable provides it.
@@ -16,15 +18,30 @@ set -euo pipefail
 
 PROJECT_DIR=$(cd "$(dirname "$0")/.." && pwd)
 cd "$PROJECT_DIR"
+ssid=${HOTSPOT_SSID:-} password=${HOTSPOT_PASSWORD:-}   # from the caller, not .env
 if [ -f .env ]; then set -a; . ./.env; set +a; fi
 OFFICE_IF=${OFFICE_IF:-wlan0}
+saved_setting() {  # hotspot_ssid / hotspot_password recorded in config/site.json
+    [ -r config/site.json ] || return 0
+    python3 -c 'import json, sys; print(json.load(open("config/site.json"))["office"].get(sys.argv[1], ""))' "$1" 2>/dev/null || true
+}
+HOTSPOT_SSID=${ssid:-$(saved_setting hotspot_ssid)}
 HOTSPOT_SSID=${HOTSPOT_SSID:-cnc-setup-$(hostname -s)}
+HOTSPOT_PASSWORD=${password:-$(saved_setting hotspot_password)}
 HOTSPOT_ADDRESS=10.42.0.1/24
 SAVED=office-net-client
 
 exists() { nmcli connection show "$1" >/dev/null 2>&1; }
 is_ap() { [ "$(nmcli -g 802-11-wireless.mode connection show "$1" 2>/dev/null)" = ap ]; }
 active_on() { nmcli -g GENERAL.CONNECTION device show "$1" 2>/dev/null || true; }
+show() {
+    echo
+    echo "Setup hotspot is $1."
+    echo "  Wi-Fi network:  $HOTSPOT_SSID"
+    echo "  Password:       $HOTSPOT_PASSWORD"
+    echo "  Admin page:     https://10.42.0.1:8443"
+    echo "  Office share:   \\\\10.42.0.1\\CNC"
+}
 
 case "${1:-}" in
 on)
@@ -32,10 +49,20 @@ on)
         echo "HOTSPOT_SSID must be 1-32 characters." >&2; exit 1
     fi
     if ! [[ ${HOTSPOT_PASSWORD:-} =~ ^[[:print:]]{8,63}$ ]]; then
-        echo "HOTSPOT_PASSWORD in .env must be 8-63 characters (host/install.sh creates one)." >&2; exit 1
+        echo "The hotspot password must be 8-63 characters (set it on the admin page's Settings)." >&2; exit 1
     fi
     if [ "${HOTSPOT_TEST_ANY_DEVICE:-}" != 1 ] && [ "$(nmcli -g GENERAL.TYPE device show "$OFFICE_IF" 2>/dev/null)" != wifi ]; then
         echo "$OFFICE_IF is not a Wi-Fi port (check OFFICE_IF in .env; ip -br link lists the ports)." >&2; exit 1
+    fi
+    # Already on with these settings: leave it alone (re-running the installer over the hotspot).
+    if exists office-net && is_ap office-net \
+        && [ "$(nmcli -g 802-11-wireless.ssid connection show office-net)" = "$HOTSPOT_SSID" ] \
+        && [ "$(nmcli -s -g 802-11-wireless-security.psk connection show office-net)" = "$HOTSPOT_PASSWORD" ]; then
+        if [ "${HOTSPOT_TEST_NO_UP:-}" != 1 ] && [ "$(active_on "$OFFICE_IF")" != office-net ]; then
+            nmcli connection up office-net >/dev/null
+        fi
+        show "already on"
+        exit 0
     fi
     # Keep the Wi-Fi network the Pi is on now, so "off" can go back to it.
     for c in office-net "$(active_on "$OFFICE_IF")"; do
@@ -58,12 +85,7 @@ on)
         echo "To go back to the previous Wi-Fi network: sudo ./host/setup-hotspot.sh off" >&2
         exit 1
     fi
-    echo
-    echo "Setup hotspot is on."
-    echo "  Wi-Fi network:  $HOTSPOT_SSID"
-    echo "  Password:       $HOTSPOT_PASSWORD"
-    echo "  Admin page:     https://10.42.0.1:8443"
-    echo "  Office share:   \\\\10.42.0.1\\CNC"
+    show on
     ;;
 off)
     if exists office-net && is_ap office-net; then nmcli connection delete office-net >/dev/null; fi
@@ -76,6 +98,7 @@ off)
     elif ! exists office-net; then
         echo "Setup hotspot is off. No previous Wi-Fi network was saved; connect with:" >&2
         echo "  sudo nmcli device wifi connect <network> password <password> name office-net" >&2
+        exit 1
     fi
     ;;
 status)

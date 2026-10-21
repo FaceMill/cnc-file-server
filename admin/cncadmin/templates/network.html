@@ -9,12 +9,12 @@
     Your computer: <span class="mono">{{ client_ip }}</span>.</p>
   {% if site.office.hotspot %}
   <p><span class="pill ok">setup hotspot</span> The Pi is a Wi-Fi access point and this is the office side.
-    Join the Wi-Fi network <strong class="mono">{{ site.office.hotspot_ssid }}</strong> (password in
-    <span class="mono">/opt/cnc-server/.env</span>, <span class="mono">HOTSPOT_PASSWORD</span>), then open
+    Join the Wi-Fi network <strong class="mono">{{ site.office.hotspot_ssid }}</strong> (password under
+    <a href="{{ url_for('web.settings') }}">Settings</a>), then open
     <span class="mono">https://10.42.0.1:8443</span>. The office share is <span class="mono">\\10.42.0.1\CNC</span>.</p>
   <p class="hint">The address is fixed (10.42.0.1, DHCP for the laptops that join). Nothing is routed onwards: the hotspot
-    has no internet and can't reach the CNC network. For updates or a real office network, set
-    <span class="mono">OFFICE_MODE=client</span> in <span class="mono">.env</span> and run the installer again.</p>
+    has no internet and can't reach the CNC network. For updates or the office network, switch the hotspot off
+    under <a href="{{ url_for('web.settings') }}">Settings</a>.</p>
   {% else %}
   <form method="post" action="{{ url_for('web.network_office') }}">
     <input type="hidden" name="csrf" value="{{ csrf }}">

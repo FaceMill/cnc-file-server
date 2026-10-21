@@ -447,32 +447,41 @@ CNC_IF="eth1 eth2"
 ### Setup hotspot (no office network at all)
 
 The Pi can be its own Wi-Fi access point instead: your laptop joins the Pi's network and gets
-the admin page and the office share, with no office network or IT involvement. In `.env`:
+the admin page and the office share, with no office network or IT involvement. It needs the
+Wi-Fi as the office port, in `.env`:
 
 ```bash
 OFFICE_IF=wlan0
-OFFICE_MODE=hotspot
-HOTSPOT_SSID=cnc-setup            # optional; default cnc-setup-<hostname>
-# HOTSPOT_PASSWORD=               # optional; the installer creates one and prints it
 CNC_IF="eth0 eth1"                # the Pi's own port is free for a machine
 ```
 
-- **Run the installer on the Pi's own screen and keyboard** (the desktop terminal), not over
-  SSH on the Wi-Fi: it switches the Wi-Fi to the hotspot as its last step, which would cut the
-  session (it refuses unless `HOTSPOT_OVER_SSH=1`). It still needs internet until then, so the Pi
-  must be on a Wi-Fi network (or cable) when you start it.
-- At the end it prints the network name and password. On the laptop, join that Wi-Fi, then
-  open **https://10.42.0.1:8443** (accept the certificate warning). The office share is
-  `\\10.42.0.1\CNC`; Cockpit is `https://10.42.0.1:9090`.
+**From the admin page** (Pi installed and on a Wi-Fi network): *Settings* → *Setup hotspot*.
+Pick a network name and password (blank: the saved one, or a new one), read the warnings, tick
+the box and switch it on. The Pi leaves its Wi-Fi network, so the page stops responding. On the
+laptop, join the hotspot, open **https://10.42.0.1:8443**, log in and click **Confirm** within
+5 minutes. Otherwise the Pi goes back to its previous Wi-Fi network by itself. Switching off
+works the same way: confirm from the office network, or the hotspot comes back.
+
+**From the installer** (e.g. a first install for the bench): add `OFFICE_MODE=hotspot` to
+`.env` (optionally `HOTSPOT_SSID=`, `HOTSPOT_PASSWORD=`), then run it **on the Pi's own screen
+and keyboard**, not over SSH on the Wi-Fi: it switches the Wi-Fi to the hotspot as its last
+step, which would cut the session (it refuses unless `HOTSPOT_OVER_SSH=1`, or the hotspot is
+already on as configured). It still needs internet until then, so the Pi must be on a Wi-Fi
+network (or cable) when you start it. At the end it prints the network name and password.
+With `OFFICE_MODE` unset, the installer keeps whatever the admin page chose; `OFFICE_MODE=client`
+switches the hotspot off.
+
+- The name and password are saved in `config/site.json` and shown under *Settings*.
+- The office share is `\\10.42.0.1\CNC`; Cockpit is `https://10.42.0.1:9090`.
 - The hotspot has **no internet** and **no route to the CNC network** (the firewall drops all
   forwarding). The Pi has one Wi-Fi radio, so while the hotspot is on it isn't on any other
-  Wi-Fi network. For updates, or to move to a real office network: set `OFFICE_MODE=client` and
-  run the installer again. It first rejoins the Wi-Fi network the Pi was on before (kept, with
-  its password), then carries on.
+  Wi-Fi network: no updates, alert emails, clock sync or Raspberry Pi Connect. The CNC network
+  keeps working.
 - By hand: `sudo ./host/setup-hotspot.sh status`, `... off` (back to the previous Wi-Fi),
-  `... on`.
+  `... on`. These don't update the admin page's record; prefer the page.
 - The **Wi-Fi country** must be set (Raspberry Pi Imager does this; otherwise
   `sudo raspi-config` → *Localisation Options* → *WLAN Country*), or the hotspot won't start.
+- Switch it off before the Pi goes into service.
 - Not tested on real Wi-Fi hardware yet; the profiles, firewall and admin page are (in
   containers, with real NetworkManager and nft).
 

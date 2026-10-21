@@ -3,7 +3,7 @@
     python -m cncadmin.cli init [--office-subnet CIDR] [--force]
     python -m cncadmin.cli render
     python -m cncadmin.cli set-admin-password
-    python -m cncadmin.cli office-mode --hotspot SSID | --client [--office-subnet CIDR]
+    python -m cncadmin.cli office-mode --hotspot SSID [--password PW] | --client [--office-subnet CIDR]
 """
 import argparse
 import getpass
@@ -44,18 +44,19 @@ def cmd_render(args):
 
 def cmd_office_mode(args):
     """Record whether the office side is the Pi's setup hotspot (host/setup-hotspot.sh runs
-    the hotspot itself); re-renders the firewall and Samba config."""
+    the hotspot itself); re-renders the firewall and Samba config. The office addressing is
+    kept, for when the Pi goes back to the office network."""
     site = config.load()
     office = site["office"]
     if args.hotspot:
-        office.update(hotspot=True, hotspot_ssid=args.hotspot, method="auto", address="", gateway="", dns=[])
+        password = args.password or office.get("hotspot_password") or config.gen_password(12)
+        office.update(hotspot=True, hotspot_ssid=args.hotspot, hotspot_password=password)
         if config.HOTSPOT_SUBNET not in office["allowed_subnets"]:
             office["allowed_subnets"].append(config.HOTSPOT_SUBNET)
         what = f"the setup hotspot '{args.hotspot}' ({config.HOTSPOT_SUBNET})"
     else:
         was_hotspot = office.get("hotspot")
-        office["hotspot"] = False
-        office.pop("hotspot_ssid", None)
+        office["hotspot"] = False  # name and password are kept for the next time
         if was_hotspot:
             office["allowed_subnets"] = [s for s in office["allowed_subnets"] if s != config.HOTSPOT_SUBNET]
         detect = was_hotspot or not office["allowed_subnets"]  # back on the office network: allow its subnet
@@ -66,7 +67,11 @@ def cmd_office_mode(args):
             print(f"Could not detect the subnet of {office['interface']}; pass --office-subnet.", file=sys.stderr)
             return 1
         what = f"the office network ({', '.join(office['allowed_subnets'])})"
-    config.save(site)
+    try:
+        config.save(site)
+    except ValueError as e:
+        print(e, file=sys.stderr)
+        return 1
     cmd_render(args)
     print(f"Office side: {what}.")
     return 0
@@ -105,6 +110,7 @@ def main():
     g = p.add_mutually_exclusive_group(required=True)
     g.add_argument("--hotspot", metavar="SSID")
     g.add_argument("--client", action="store_true")
+    p.add_argument("--password", help="hotspot password (default: the saved one, else a new one)")
     p.add_argument("--office-subnet")
     p.set_defaults(func=cmd_office_mode)
     args = parser.parse_args()

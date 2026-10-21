@@ -8,6 +8,7 @@ import ipaddress
 import os
 import re
 import secrets
+import socket
 import threading
 import time
 
@@ -20,7 +21,7 @@ from . import config, system
 from .config import MACHINE_TYPES, PROTOCOLS, SERIAL_CHOICES, SERIAL_DEFAULTS
 from . import appearance, dnc_files, events, focas_client, monitor, recycle
 from .serial_dnc import manager as dnc
-from .network import CONFIRM_SECONDS, office_change
+from .network import CONFIRM_SECONDS, HOTSPOT_CONFIRM_SECONDS, office_change
 from .ntlm import nt_hash
 
 bp = Blueprint("web", __name__)
@@ -649,8 +650,83 @@ def _move_to_recycle(m, path):
 @bp.get("/settings")
 @login_required
 def settings():
-    return render_template("settings.html", site=config.load(), recycle_stats=recycle.stats(),
-                           swatches=appearance.swatches())
+    site = config.load()
+    return render_template("settings.html", site=site, recycle_stats=recycle.stats(),
+                           swatches=appearance.swatches(), hotspot_confirm=HOTSPOT_CONFIRM_SECONDS,
+                           office_device=system.device_type(site["office"]["interface"]),
+                           office_url=office_url(), hotspot_subnet=config.HOTSPOT_SUBNET,
+                           hotspot_ssid=default_hotspot_ssid(site["office"]))
+
+
+def default_hotspot_ssid(office):
+    # As host/install.sh names it (this container shares the Pi's hostname: host network)
+    return office.get("hotspot_ssid") or f"cnc-setup-{socket.gethostname().split('.')[0]}"[:32]
+
+
+def office_url():
+    host = os.environ.get("OFFICE_HOSTNAME", "")
+    return f"https://{host}:8443" if host else "the Pi's office address (port 8443)"
+
+
+@bp.post("/settings/hotspot/on")
+@login_required
+def settings_hotspot_on():
+    """Switch the office side to the setup hotspot, with rollback unless confirmed from it."""
+    site = config.load()
+    office = site["office"]
+    if office.get("hotspot"):
+        flash("The setup hotspot is already on.", "error")
+        return redirect(url_for("web.settings"))
+    device = system.device_type(office["interface"])
+    if device and device != "wifi":
+        flash(f"The office port {office['interface']} is {device}, not Wi-Fi: the hotspot needs the Pi's "
+              "Wi-Fi as the office port (OFFICE_IF=wlan0 in .env).", "error")
+        return redirect(url_for("web.settings"))
+    if not request.form.get("understood"):
+        flash("Tick the box to confirm you've read what happens when the hotspot is switched on.", "error")
+        return redirect(url_for("web.settings"))
+    new = copy.deepcopy(office)
+    new.update(hotspot=True,
+               hotspot_ssid=request.form.get("ssid", "").strip() or default_hotspot_ssid(office),
+               hotspot_password=(request.form.get("password", "") or office.get("hotspot_password")
+                                 or config.gen_password(12)))
+    if config.HOTSPOT_SUBNET not in new["allowed_subnets"]:
+        new["allowed_subnets"].append(config.HOTSPOT_SUBNET)
+    try:
+        office_change.start(new, HOTSPOT_CONFIRM_SECONDS)
+    except ValueError as e:
+        flash(str(e), "error")
+        return redirect(url_for("web.settings"))
+    flash(f"Switching to the setup hotspot. Join the Wi-Fi network '{new['hotspot_ssid']}' (password below), "
+          f"open https://10.42.0.1:8443, log in and click Confirm within "
+          f"{HOTSPOT_CONFIRM_SECONDS // 60} minutes, or the Pi goes back to its previous Wi-Fi network.", "ok")
+    return redirect(url_for("web.settings"))
+
+
+@bp.post("/settings/hotspot/off")
+@login_required
+def settings_hotspot_off():
+    """Back to the office Wi-Fi network the Pi was on before, with rollback unless confirmed."""
+    site = config.load()
+    office = site["office"]
+    if not office.get("hotspot"):
+        flash("The setup hotspot is already off.", "error")
+        return redirect(url_for("web.settings"))
+    new = copy.deepcopy(office)
+    new["hotspot"] = False
+    new["allowed_subnets"] = [s for s in request.form.get("allowed_subnets", "").replace(",", " ").split()
+                              if s != config.HOTSPOT_SUBNET]
+    if not new["allowed_subnets"]:
+        flash("Enter the office subnet(s) that should reach the Pi on the office network, e.g. 10.10.0.0/16.", "error")
+        return redirect(url_for("web.settings"))
+    try:
+        office_change.start(new, HOTSPOT_CONFIRM_SECONDS)
+    except ValueError as e:
+        flash(str(e), "error")
+        return redirect(url_for("web.settings"))
+    flash(f"Switching back to the office Wi-Fi network. Move your computer to it, open {office_url()}, "
+          f"log in and click Confirm within {HOTSPOT_CONFIRM_SECONDS // 60} minutes, or the hotspot comes back.", "ok")
+    return redirect(url_for("web.settings"))
 
 
 @bp.post("/settings/appearance")
@@ -898,8 +974,8 @@ def network_cnc():
 def network_office():
     site = config.load()
     if site["office"].get("hotspot"):
-        flash("The office side is the Pi's setup hotspot; its address is fixed. To use a real office "
-              "network, set OFFICE_MODE=client in .env and run the installer again.", "error")
+        flash("The office side is the Pi's setup hotspot; its address is fixed. To go back to the office "
+              "network, switch the hotspot off under Settings.", "error")
         return redirect(url_for("web.network"))
     new = copy.deepcopy(site["office"])
     new["method"] = request.form.get("method", "auto")

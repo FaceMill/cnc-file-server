@@ -85,8 +85,8 @@ check("address is fixed" in r.get_data(as_text=True) and config.load()["office"]
 # Back to the office network
 r = cli("office-mode", "--client", "--office-subnet", "192.168.75.0/24")
 site = config.load()
-check(r.returncode == 0 and not site["office"]["hotspot"] and "hotspot_ssid" not in site["office"],
-      "office-mode --client: hotspot off")
+check(r.returncode == 0 and not site["office"]["hotspot"] and site["office"]["hotspot_ssid"] == "cnc-setup-test",
+      "office-mode --client: hotspot off (name and password kept for next time)")
 check(config.HOTSPOT_SUBNET not in site["office"]["allowed_subnets"] and "192.168.75.0/24" in site["office"]["allowed_subnets"],
       f"hotspot subnet removed, office subnet allowed ({site['office']['allowed_subnets']})")
 check(DHCP not in generated("nftables.conf") and nft_ok(), "firewall back to office rules (valid)")
@@ -95,6 +95,65 @@ check('action="/network/office"' in page, "network page: office address form bac
 r = cli("office-mode", "--client")
 check(r.returncode == 0 and config.load()["office"]["allowed_subnets"] == site["office"]["allowed_subnets"],
       "office-mode --client when already off: no change")
+
+# --- Settings page: switching the hotspot on and off (with rollback) ---------------
+import time
+from cncadmin.network import office_change, HOTSPOT_CONFIRM_SECONDS
+
+
+def applied():
+    for _ in range(50):
+        if office_change.pending and office_change.pending.get("deadline"):
+            return True
+        time.sleep(0.2)
+    return False
+
+
+page = c.get(BASE + "/settings").get_data(as_text=True)
+check("Switch the hotspot on" in page and "The Pi leaves its current Wi-Fi network" in page and "No internet" in page,
+      "settings page: hotspot form with warnings")
+saved_pw = config.load()["office"]["hotspot_password"]
+r = c.post(BASE + "/settings/hotspot/on", data={"csrf": csrf(), "ssid": "bench-test"}, follow_redirects=True)
+check("Tick the box" in r.get_data(as_text=True) and not office_change.pending, "hotspot on refused without the acknowledgement")
+r = c.post(BASE + "/settings/hotspot/on", data={"csrf": csrf(), "ssid": "bench-test", "password": "short", "understood": "1"},
+           follow_redirects=True)
+check("8-63 characters" in r.get_data(as_text=True) and not office_change.pending, "hotspot password under 8 characters refused")
+r = c.post(BASE + "/settings/hotspot/on", data={"csrf": csrf(), "ssid": "bench-test", "password": "", "understood": "1"})
+with c.session_transaction(base_url=BASE) as sess:
+    flashed = repr(sess.get("_flashes"))
+page = c.get(BASE + "/settings").get_data(as_text=True)
+check(office_change.pending and office_change.pending["new"]["hotspot"] and office_change.pending["seconds"] == HOTSPOT_CONFIRM_SECONDS,
+      f"hotspot on: pending, {HOTSPOT_CONFIRM_SECONDS} s to confirm")
+check(office_change.pending["new"]["hotspot_password"] == saved_pw, "blank password keeps the saved one")
+check("Switching to the hotspot" in page and saved_pw in page, "settings page shows the network and password to join")
+check("bench-test" in flashed and saved_pw not in flashed, "password not put in the session cookie (flash message)")
+check(applied() and DHCP in generated("nftables.conf") and nft_ok(), "hotspot on applied: firewall allows DHCP (valid)")
+check(not config.load()["office"]["hotspot"], "not saved until confirmed")
+c.post(BASE + "/network/confirm", data={"csrf": csrf()})
+site = config.load()
+check(site["office"]["hotspot"] and site["office"]["hotspot_ssid"] == "bench-test" and not office_change.pending,
+      "confirmed: hotspot on, new name saved")
+page = c.get(BASE + "/settings").get_data(as_text=True)
+check("Switch off, back to the office Wi-Fi" in page and "bench-test" in page and saved_pw in page,
+      "settings page: hotspot details and the switch-off form")
+check("10.42.0.0/24" not in page.split('name="allowed_subnets">')[1].split("</textarea>")[0],
+      "switch-off form: office subnets only")
+
+r = c.post(BASE + "/settings/hotspot/off", data={"csrf": csrf(), "allowed_subnets": ""}, follow_redirects=True)
+check("Enter the office subnet" in r.get_data(as_text=True) and not office_change.pending, "switch-off needs an office subnet")
+c.post(BASE + "/settings/hotspot/off", data={"csrf": csrf(), "allowed_subnets": "192.168.75.0/24"})
+check(applied() and DHCP not in generated("nftables.conf"), "hotspot off applied: hotspot rules gone")
+c.post(BASE + "/network/revert", data={"csrf": csrf()})
+check(config.load()["office"]["hotspot"] and DHCP in generated("nftables.conf") and not office_change.pending,
+      "not confirmed (reverted): hotspot back on, rules back")
+c.post(BASE + "/settings/hotspot/off", data={"csrf": csrf(), "allowed_subnets": "192.168.75.0/24"})
+applied()
+c.post(BASE + "/network/confirm", data={"csrf": csrf()})
+site = config.load()
+check(not site["office"]["hotspot"] and site["office"]["allowed_subnets"] == ["192.168.75.0/24"]
+      and DHCP not in generated("nftables.conf") and nft_ok(), "confirmed: back on the office network, its subnet allowed")
+check(saved_pw in open(config.SITE_FILE).read() and oct(os.stat(config.SITE_FILE).st_mode & 0o777) == "0o600",
+      "hotspot password kept in site.json (owner-only)")
 
 print("ALL PASSED" if not fails else f"{len(fails)} FAILED", flush=True)
 os._exit(1 if fails else 0)

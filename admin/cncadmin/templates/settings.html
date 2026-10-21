@@ -4,6 +4,86 @@
 <h1>Settings</h1>
 
 <div class="card">
+  <h2>Setup hotspot <span class="mono muted">{{ site.office.interface }}</span>
+    {% if site.office.hotspot %}<span class="pill warn">on</span>{% else %}<span class="pill idle">off</span>{% endif %}</h2>
+  <p class="muted">For setup and bench tests without an office network: the Pi's Wi-Fi becomes its own access point
+    and laptops that join it reach this page at <span class="mono">https://10.42.0.1:8443</span> and the office share at
+    <span class="mono">\\10.42.0.1\CNC</span>. Nothing is routed onwards: no internet, no route to the CNC network.</p>
+
+  {% set switching = pending and (pending.new.get('hotspot', False) != pending.old.get('hotspot', False)) %}
+  {% if switching and pending.new.hotspot %}
+  <div class="flash ok">
+    <strong>Switching to the hotspot.</strong> On your laptop, join the Wi-Fi network
+    <strong class="mono">{{ pending.new.hotspot_ssid }}</strong>, password <strong class="mono">{{ pending.new.hotspot_password }}</strong>,
+    open <span class="mono">https://10.42.0.1:8443</span>, log in and click <strong>Confirm</strong>.
+    {% if pending.seconds_left is not none %}Back to the previous Wi-Fi network in {{ pending.seconds_left }} s unless confirmed.{% endif %}
+  </div>
+  {% elif switching %}
+  <div class="flash ok">
+    <strong>Switching back to the office Wi-Fi network.</strong> Move your computer to it, open
+    <span class="mono">{{ office_url }}</span>, log in and click <strong>Confirm</strong>.
+    {% if pending.seconds_left is not none %}The hotspot comes back in {{ pending.seconds_left }} s unless confirmed.{% endif %}
+  </div>
+  {% endif %}
+
+  {% if site.office.hotspot %}
+  <table style="max-width:520px">
+    <tr><th>Wi-Fi network</th><td class="mono">{{ site.office.hotspot_ssid }}</td></tr>
+    <tr><th>Password</th><td class="mono">{{ site.office.hotspot_password }}</td></tr>
+    <tr><th>Admin page</th><td class="mono">https://10.42.0.1:8443</td></tr>
+    <tr><th>Office share</th><td class="mono">\\10.42.0.1\CNC</td></tr>
+  </table>
+  <form method="post" action="{{ url_for('web.settings_hotspot_off') }}"
+        data-msg="Switch the hotspot off? Laptops on it lose the connection; the Pi rejoins its previous Wi-Fi network."
+        onsubmit="return confirm(this.dataset.msg)">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label for="hs_subnets">Office subnets allowed on the office network</label>
+    <textarea id="hs_subnets" name="allowed_subnets">{{ site.office.allowed_subnets | reject('equalto', hotspot_subnet) | join('\n') }}</textarea>
+    <div class="hint">Only these subnets can reach the shares and web pages once the Pi is back on the office network. One per line, e.g. 10.10.0.0/16.</div>
+    <ul class="hint">
+      <li>Laptops on the hotspot lose the connection at once.</li>
+      <li>The Pi rejoins the Wi-Fi network it was on before the hotspot (password kept). It must be in range.</li>
+      <li>Then open <span class="mono">{{ office_url }}</span> from the office network and click <strong>Confirm</strong>
+        within {{ hotspot_confirm // 60 }} minutes. If you don't (e.g. the Pi couldn't rejoin), the hotspot comes back by itself.</li>
+    </ul>
+    <div class="actions"><button {{ 'disabled' if pending }}>Switch off, back to the office Wi-Fi</button></div>
+  </form>
+  {% elif office_device and office_device != 'wifi' %}
+  <p class="hint">Not available: the office port <span class="mono">{{ site.office.interface }}</span> is
+    {{ office_device }}, not Wi-Fi. The hotspot needs the Pi's Wi-Fi as the office port
+    (<span class="mono">OFFICE_IF=wlan0</span> in <span class="mono">.env</span>, then run the installer again).</p>
+  {% else %}
+  <form method="post" action="{{ url_for('web.settings_hotspot_on') }}"
+        data-msg="Switch the hotspot on? The Pi leaves its current Wi-Fi network and this page stops responding here."
+        onsubmit="return confirm(this.dataset.msg)">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <div class="actions" style="margin-top:0">
+      <div><div class="hint">Wi-Fi network name</div>
+        <input type="text" name="ssid" value="{{ hotspot_ssid }}" maxlength="32" style="width:220px"></div>
+      <div><div class="hint">Password {{ '(saved; leave blank to keep)' if site.office.hotspot_password else '(blank: a new one is made)' }}</div>
+        <input type="text" name="password" autocomplete="off" minlength="8" maxlength="63" style="width:220px"></div>
+    </div>
+    <p><strong>Before you switch it on:</strong></p>
+    <ul>
+      <li><strong>The Pi leaves its current Wi-Fi network.</strong> This page, SSH, Raspberry Pi Connect and the office
+        share stop working from the office network until the hotspot is off. Only devices on the hotspot reach the Pi.</li>
+      <li><strong>No internet while it's on:</strong> no updates, no alert emails, and the clock isn't synchronised.</li>
+      <li>The CNC network keeps working: machines can still read and save files.</li>
+      <li>After switching, join the hotspot, open <span class="mono">https://10.42.0.1:8443</span> and click
+        <strong>Confirm</strong> within {{ hotspot_confirm // 60 }} minutes. If you don't, the Pi goes back to its
+        previous Wi-Fi network by itself.</li>
+      <li>If it doesn't start, the Wi-Fi country is probably not set (<span class="mono">sudo raspi-config</span> &rarr;
+        Localisation Options &rarr; WLAN Country). The Pi goes back to its previous Wi-Fi network.</li>
+      <li>Anyone with the password can reach the login page and the office share: share it only with the people setting up.
+        Switch the hotspot off before the Pi goes into service; it is a Wi-Fi network your IT department hasn't approved.</li>
+    </ul>
+    <label><input type="checkbox" name="understood" required> I've read this; the Pi may be out of reach until I join the hotspot</label>
+    <div class="actions"><button class="danger" {{ 'disabled' if pending }}>Switch the hotspot on</button></div>
+  </form>
+  {% endif %}
+</div>
+
+<div class="card">
   <h2>Appearance</h2>
   {% set a = site.appearance %}
   <form method="post" action="{{ url_for('web.settings_appearance') }}">
