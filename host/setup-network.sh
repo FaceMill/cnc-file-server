@@ -28,6 +28,13 @@ done
 if [ "${OFFICE_MODE:-client}" != hotspot ]; then
     # Rename the connection currently active on the office port (no reconnect, safe over SSH).
     current=$(nmcli -g GENERAL.CONNECTION device show "$OFFICE_IF" 2>/dev/null || true)
+    case "$current" in cnc-net|cnc-port-*)
+        echo "$OFFICE_IF is still set up as a CNC port ($current). Make it an office connection first:" >&2
+        echo "  sudo nmcli connection delete $current" >&2
+        echo "  sudo nmcli connection add type ethernet ifname $OFFICE_IF con-name office-wired ipv4.method auto" >&2
+        echo "  sudo nmcli connection up office-wired     (needs an address from the office network)" >&2
+        exit 1 ;;
+    esac
     if [ -n "$current" ] && [ "$current" != office-net ]; then
         # The office side moved to this port (e.g. cable to Wi-Fi): the old office-net goes,
         # so there is only one. That disconnects the old port (now free, e.g. for the CNCs).

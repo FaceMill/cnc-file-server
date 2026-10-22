@@ -140,4 +140,8 @@ check "office moved: exactly one office-net, on the new port, settings kept" \
       '[ "$(nmcli -g NAME connection show | grep -cx office-net)" = 1 ] && [ "$(nmcli -g GENERAL.CONNECTION device show eth2)" = office-net ] && [ "$(addr eth2)" = 10.30.0.10/16 ]'
 check "office moved: the old port is now the CNC port" '[ "$(nmcli -g GENERAL.CONNECTION device show wlan0)" = cnc-net ] && [ "$(addr wlan0)" = 192.168.50.1/24 ]'
 
+profiles_before=$(profiles)
+check "refuses an office port that is still a CNC port, changes nothing" \
+      '! OFFICE_IF=wlan0 CNC_IF=eth1 bash "$SETUP" >/tmp/run-cncport.log 2>&1 && grep -q "still set up as a CNC port" /tmp/run-cncport.log && [ "$(profiles)" = "$profiles_before" ] && [ "$(nmcli -g GENERAL.CONNECTION device show wlan0)" = cnc-net ]'
+
 [ $fails -eq 0 ] && echo "ALL PASSED" || { echo "$fails FAILED"; tail -20 /tmp/run2.log; exit 1; }
