@@ -20,15 +20,29 @@ Networking settings on the SETNG page (around settings 900–916):
 | Obtain Address Automatically    | OFF                                 |
 | IP Address                      | from the setup sheet (e.g. 192.168.50.11) |
 | Subnet Mask                     | 255.255.255.0                       |
-| Default Gateway                 | blank / 0.0.0.0                     |
+| Default Gateway                 | `192.168.50.1` (the Pi; older software rejects blank) |
+| DNS Server                      | `192.168.50.1`, or blank            |
 | Domain / Workgroup              | `WORKGROUP`                         |
-| Remote Server Name              | `192.168.50.1`                      |
-| Remote Share Path               | share name, e.g. `haas1`            |
+| Remote Server Name              | `192.168.50.1`: the address, not a name |
+| Remote Share Path               | share name, e.g. `HAAS1`            |
 | User Name / Password            | from the setup sheet                |
+
+The Haas keyboard has capitals only: type the share and user name in capitals (`HAAS1`);
+the server accepts them. Machine passwords are capitals and digits, so they type as shown.
 
 Power-cycle the control. The share appears as the network device in List Program.
 
+A control that was on an office network before still has its old **Remote Server Name**
+(a Windows PC's name), DNS servers, share path and login. On the CNC network it can't find
+that server: it looks the name up in the old DNS, gives up, and shows **alarm 971 FAILED
+LOAD** at power-up. Write the old values down, then replace all of them with the ones above.
+The control goes into *Drivers not Loaded* mode after the alarm, where the settings can be
+changed. Avoid the restore-defaults key sequence at power-up unless nothing else works.
+
 Troubleshooting:
+- Alarm 971 at power-up: see above. To see what the control does while it starts up, run
+  on the Pi `sudo timeout 180 tcpdump -ni <CNC port> host <machine IP>` and power-cycle it:
+  DNS lookups for a name mean the Remote Server Name is still a name.
 - Admin page → Status: is the machine "reachable"? If not, check the cable, switch, and IP settings.
 - Admin page → Logs → `samba-cnc`: look for authentication errors from the machine's IP.
 - After the CNC file server restarts (adding, editing, or removing a machine), the Haas
