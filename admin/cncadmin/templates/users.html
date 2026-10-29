@@ -2,7 +2,19 @@
 {% block title %}Office users{% endblock %}
 {% block content %}
 <h1>Office users</h1>
-<p class="muted">These logins open <span class="mono">\\&lt;pi&gt;\CNC</span> from office PCs (SMB3), which contains every machine's folder.</p>
+<p class="muted">These logins open the office share from office PCs (SMB3). It contains every machine's folder.</p>
+<div class="card">
+  <h2>Connecting from Windows</h2>
+  <table style="max-width:620px">
+    <tr><th>Folder</th><td class="mono">\\{{ share_host }}\CNC</td></tr>
+    <tr><th>User name</th><td><span class="mono">{{ server_name }}\<em>username</em></span>, e.g. <span class="mono">{{ server_name }}\{{ (site.office_users | first).name if site.office_users else 'programmer' }}</span></td></tr>
+    <tr><th>Password</th><td>the user's password from this page</td></tr>
+  </table>
+  <p class="hint">Type the <span class="mono">{{ server_name }}\</span> in front of the user name. Without it, a PC on a Windows domain
+    sends its domain login (shown as <span class="mono">DOMAIN\username</span>) and the server refuses it. In <em>Map network drive</em>,
+    tick <em>Connect using different credentials</em>, then <em>More choices</em> &rarr; <em>Use a different account</em>. Command prompt:<br>
+    <span class="mono">net use Z: \\{{ share_host }}\CNC /user:{{ server_name }}\username * /persistent:yes</span></p>
+</div>
 
 <div class="card">
   <table>

@@ -3,7 +3,8 @@
 [global]
     server role = standalone server
     workgroup = {{ site.workgroup }}
-    netbios name = CNC-FILES
+    # Office users log in as {{ server_name }}\<user> (the first part of OFFICE_HOSTNAME).
+    netbios name = {{ server_name }}
     server string = CNC file server
 
     interfaces = {{ office.interface }}

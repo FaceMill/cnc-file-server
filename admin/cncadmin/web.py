@@ -873,7 +873,8 @@ def password_from_form():
 @bp.get("/users")
 @login_required
 def users():
-    return render_template("users.html", site=config.load())
+    return render_template("users.html", site=config.load(), server_name=config.office_server_name(),
+                           share_host=config.office_hostname() or "<pi>")
 
 
 @bp.post("/users/add")

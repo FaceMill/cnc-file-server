@@ -191,13 +191,23 @@ Reboot once (`sudo reboot`) and check again: everything should come back on its 
 In File Explorer, choose *This PC → Map network drive*, then:
 
 - Folder: `\\<OFFICE_HOSTNAME>\CNC`
-- Tick *Connect using different credentials* and enter an office user from step 9.
+- Tick *Connect using different credentials*. When it asks, choose *More choices → Use a
+  different account* and enter an office user from step 9 **with the server's name in front**:
+  `CNC-FILES\programmer` for `OFFICE_HOSTNAME=cnc-files.example.com`. The name is the first
+  part of `OFFICE_HOSTNAME`, in capitals; the admin page's *Office users* page shows it.
 
-Or from a command prompt:
+Without the prefix, a PC on a Windows domain sends `DOMAIN\programmer` (its own domain) and
+the login fails.
+
+Or from a command prompt (`*` asks for the password):
 
 ```
-net use Z: \\cnc-files.example.com\CNC /user:programmer /persistent:yes
+net use Z: \\cnc-files.example.com\CNC /user:CNC-FILES\programmer * /persistent:yes
 ```
+
+If Windows reports *multiple connections to a server by the same user* (error 1219), it is
+already connected to the server with another login: `net use * /delete`, remove the server's
+entries under *Credential Manager → Windows Credentials*, and map again.
 
 The share requires SMB3 with encryption (Windows 8 / Server 2012 and newer).
 

@@ -3,7 +3,9 @@
 A one-page guide for everyday problems. Print it and keep it near the machines.
 
 **Admin page:** `https://<server-name>:8443`. The person who looks after the server has the
-login. **Office share:** `\\<server-name>\CNC`
+login. **Office share:** `\\<server-name>\CNC`. Log in as `<SERVER-NAME>\<your user>`, e.g.
+`CNC-FILES\programmer`: the server's short name in capitals, then a backslash, then your user
+name (shown on the admin page's *Office users* page).
 
 ---
 

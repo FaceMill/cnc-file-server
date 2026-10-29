@@ -135,6 +135,25 @@ HOTSPOT_ADDRESS = "10.42.0.1/24"
 HOTSPOT_SUBNET = "10.42.0.0/24"
 
 
+def office_hostname():
+    """OFFICE_HOSTNAME from .env: the name office PCs use for the Pi ("" if not set)."""
+    return os.environ.get("OFFICE_HOSTNAME", "").strip()
+
+
+def office_server_name():
+    """The office file server's Windows (NetBIOS) name: the first part of OFFICE_HOSTNAME,
+    e.g. CNC-FILES for cnc-files.example.com. Office users log in as NAME\\user, which
+    keeps Windows from sending their domain login instead."""
+    host = office_hostname()
+    try:
+        ipaddress.ip_address(host)
+        host = ""  # an IP address isn't a name
+    except ValueError:
+        pass
+    name = re.sub(r"[^A-Z0-9-]", "-", host.split(".")[0].upper())[:15].strip("-")
+    return name if name and not name.isdigit() else "CNC-FILES"
+
+
 def gen_password(length=8):
     return "".join(secrets.choice(PASSWORD_CHARS) for _ in range(length))
 
