@@ -2,7 +2,7 @@
 
     python -m cncadmin.cli init [--office-subnet CIDR] [--force]
     python -m cncadmin.cli render
-    python -m cncadmin.cli set-admin-password
+    python -m cncadmin.cli set-admin-password [--generate]
     python -m cncadmin.cli office-mode --hotspot SSID [--password PW] | --client [--office-subnet CIDR]
 """
 import argparse
@@ -78,6 +78,12 @@ def cmd_office_mode(args):
 
 
 def cmd_set_admin_password(args):
+    if args.generate:
+        pw = config.gen_password(14)
+        config.set_admin_password_hash(generate_password_hash(pw))
+        print(f"Admin password set to: {pw}")
+        print("Log in as 'admin' and change it under Account.")
+        return 0
     # Ask again on a typo instead of failing: the installer stops if this fails.
     for _ in range(3):
         pw = getpass.getpass("New admin password (at least 10 characters): ")
@@ -90,8 +96,7 @@ def cmd_set_admin_password(args):
         config.set_admin_password_hash(generate_password_hash(pw))
         print("Admin password set. Log in as 'admin'.")
         return 0
-    print("No password set; run: sudo docker compose run --rm --no-deps cnc-admin "
-          "python -m cncadmin.cli set-admin-password", file=sys.stderr)
+    print("No password set; run: sudo host/reset-admin-password.sh", file=sys.stderr)
     return 1
 
 
@@ -105,7 +110,9 @@ def main():
     p.add_argument("--force", action="store_true")
     p.set_defaults(func=cmd_init)
     sub.add_parser("render").set_defaults(func=cmd_render)
-    sub.add_parser("set-admin-password").set_defaults(func=cmd_set_admin_password)
+    p = sub.add_parser("set-admin-password")
+    p.add_argument("--generate", action="store_true", help="set a random password and print it")
+    p.set_defaults(func=cmd_set_admin_password)
     p = sub.add_parser("office-mode")
     g = p.add_mutually_exclusive_group(required=True)
     g.add_argument("--hotspot", metavar="SSID")

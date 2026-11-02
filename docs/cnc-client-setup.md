@@ -7,8 +7,8 @@ the machine. This page gives the general procedure.
 > Setting numbers and menu paths are from general Haas/Siemens documentation.
 > **Verify against the manual for your control and software version.**
 
-Defaults: server (Pi) `192.168.50.1`, mask `255.255.255.0`, no gateway,
-workgroup `WORKGROUP`. Always connect **by IP**, not by name.
+Defaults: server (Pi) `192.168.50.1`, mask `255.255.255.0`, no gateway (Haas Classic:
+gateway `192.168.50.1`), workgroup `WORKGROUP`. Always connect **by IP**, not by name.
 
 ## Haas Classic control
 
@@ -20,8 +20,8 @@ Networking settings on the SETNG page (around settings 900–916):
 | Obtain Address Automatically    | OFF                                 |
 | IP Address                      | from the setup sheet (e.g. 192.168.50.11) |
 | Subnet Mask                     | 255.255.255.0                       |
-| Default Gateway                 | `192.168.50.1` (the Pi; older software rejects blank) |
-| DNS Server                      | `192.168.50.1`, or blank            |
+| Default Gateway                 | `192.168.50.1` (the Pi): required, the Haas doesn't connect without it |
+| DNS Server                      | blank, or `192.168.50.1` if the control refuses blank |
 | Domain / Workgroup              | `WORKGROUP`                         |
 | Remote Server Name              | `192.168.50.1`: the address, not a name |
 | Remote Share Path               | share name, e.g. `HAAS1`            |
@@ -30,19 +30,27 @@ Networking settings on the SETNG page (around settings 900–916):
 The Haas keyboard has capitals only: type the share and user name in capitals (`HAAS1`);
 the server accepts them. Machine passwords are capitals and digits, so they type as shown.
 
-Power-cycle the control. The share appears as the network device in List Program.
+Press WRITE/ENTER after each value, then power-cycle the control. The share appears as the
+network device in List Program. Open the settings again afterwards and check every value was
+kept: a value that wasn't entered properly reverts to the old one.
 
 A control that was on an office network before still has its old **Remote Server Name**
 (a Windows PC's name), DNS servers, share path and login. On the CNC network it can't find
 that server: it looks the name up in the old DNS, gives up, and shows **alarm 971 FAILED
-LOAD** at power-up. Write the old values down, then replace all of them with the ones above.
+LOAD** at power-up, or simply never connects. Write the old values down, then replace all of
+them with the ones above: the server name and gateway with `192.168.50.1`, and the old DNS
+servers cleared.
 The control goes into *Drivers not Loaded* mode after the alarm, where the settings can be
 changed. Avoid the restore-defaults key sequence at power-up unless nothing else works.
 
 Troubleshooting:
-- Alarm 971 at power-up: see above. To see what the control does while it starts up, run
-  on the Pi `sudo timeout 180 tcpdump -ni <CNC port> host <machine IP>` and power-cycle it:
-  DNS lookups for a name mean the Remote Server Name is still a name.
+- Alarm 971 at power-up, or no connection: see above. To see what the control does while it
+  starts up, run on the Pi `sudo timeout 180 tcpdump -ni <CNC port> host <machine IP>` and
+  power-cycle it:
+  - DNS lookups (`... > x.x.x.x.53: A? NAME`) or name broadcasts to `192.168.50.255.137` with
+    nothing to `192.168.50.1.445`: the Remote Server Name is still a name.
+  - Traffic to `192.168.50.1.445` or `.139`: the network settings are right. If it still
+    fails, check the share, user name and password.
 - Admin page → Status: is the machine "reachable"? If not, check the cable, switch, and IP settings.
 - Admin page → Logs → `samba-cnc`: look for authentication errors from the machine's IP.
 - After the CNC file server restarts (adding, editing, or removing a machine), the Haas

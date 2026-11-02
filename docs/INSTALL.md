@@ -63,6 +63,8 @@ the office network, and SSH (built into Windows 10+, macOS and Linux).
    - Username and a strong password (this is the Pi login, also used for Cockpit)
    - Locale and time zone: yours
    - Services: **enable SSH**, preferably with your public key
+   - Wi-Fi: **leave it off.** The office cable is the Pi's only office connection; a Wi-Fi
+     network as well would be a second way in that the firewall and IT don't expect.
 5. Write the image and put the SSD (or SD card) in the Pi.
 6. If booting from NVMe with an SD card still present, set NVMe first after the first boot:
    `sudo raspi-config` → *Advanced Options* → *Boot Order* → *NVMe/USB Boot*.
@@ -74,10 +76,28 @@ then:
 
 ```bash
 ssh <user>@<pi-address>
-sudo apt update && sudo apt full-upgrade -y
 ip link show eth0        # "link/ether xx:xx:..." is the MAC to give IT (step 0)
+sudo apt update && sudo apt full-upgrade -y
+sudo apt install -y tmux
 sudo reboot
 ```
+
+**Don't switch the Pi off or unplug it while it updates** (10–20 minutes is normal). An
+interrupted update leaves the package system half-done.
+
+**`dpkg was interrupted, you must manually run 'sudo dpkg --configure -a'`**: an update was cut
+off, often the automatic one after first boot. Finishing it can restart the network and drop
+your SSH session, which interrupts it again, so run it as a background job that survives that:
+
+```bash
+sudo systemd-run --unit=fix-apt --setenv=DEBIAN_FRONTEND=noninteractive bash -c \
+  'dpkg --configure -a --force-confdef --force-confold && apt-get -f install -y && apt-get -o Dpkg::Options::=--force-confold full-upgrade -y'
+sudo journalctl -u fix-apt -f      # reconnect and run this again if the session drops
+```
+
+It's done when the log shows `Deactivated successfully` and `sudo dpkg --audit` prints nothing.
+Then `sudo reboot`. "Could not get lock": the automatic update is still running; wait until
+`pgrep -a 'apt|dpkg'` prints nothing.
 
 ## 4. Check the network ports
 
@@ -119,17 +139,40 @@ sudo nano .env
 | `OFFICE_IF` | Leave `eth0` (Wi-Fi test bench: `wlan0`) |
 | `CNC_IF` | Leave `eth1`. Several ports, e.g. `"eth1 eth2"`, are bridged as `br-cnc` (the Pi acts as the switch) |
 
-Everything else (machines, users, IPs, firewall) is configured later in the web page.
+Each setting once: if a name appears twice, the last line wins. Everything else (machines,
+users, IPs, firewall) is configured later in the web page.
+
+Check that the office port has its address before installing:
+
+```bash
+ip -br addr show eth0      # the office address from IT, e.g. 10.10.x.y/16
+```
+
+Only an `fe80::` address, or nothing: check the cable and wait a minute for DHCP. If IT gave
+a fixed address instead of a DHCP reservation, set it (your values):
+
+```bash
+sudo nmcli connection add type ethernet ifname eth0 con-name office-net ipv4.method manual \
+  ipv4.addresses 10.10.x.y/16 ipv4.gateway 10.10.0.1 ipv4.dns 10.10.0.2
+sudo nmcli connection up office-net
+```
 
 ## 7. Run the installer
 
+Run it inside `tmux`, so a dropped SSH connection doesn't stop it:
+
 ```bash
+tmux new -s install
 cd /opt/cnc-server
-sudo ./host/install.sh
+sudo ./host/install.sh 2>&1 | tee ~/install.log
 ```
 
-It's safe to run over SSH. It takes 15–30 minutes, mostly building the container images,
-and does the following:
+If the connection drops, log in again and run `tmux attach -t install` (inside tmux already,
+you'll see "sessions should be nested with care": just run the installer there). If the
+installer stopped part-way, run it again: it carries on where it can, and asks for the admin
+password again.
+
+It takes 15–30 minutes, mostly building the container images, and does the following:
 
 0. **Pi 5 only, first run:** a Pi 5 boots a kernel with 16K memory pages, which can't run the
    32-bit ARM FANUC FOCAS library. The installer switches to Raspberry Pi's standard 4K-page
@@ -155,6 +198,9 @@ and does the following:
 
 It finishes with the admin URL.
 
+**"No active connection on eth0"**: the office port has no address yet. See the check at the
+end of step 6, then run the installer again.
+
 ## 8. Check the installation
 
 ```bash
@@ -164,7 +210,12 @@ sudo docker compose ps                  # 6 services "running": samba-office, sa
 ip -br addr                             # eth0 office address, eth1 192.168.50.1/24
 sysctl net.ipv4.ip_forward              # = 0
 sudo nft list ruleset | head -30        # the generated firewall
+curl -kI https://localhost:8443         # "HTTP/2 302": the admin page is up
+nmcli connection show                   # office-net and cnc-net (or cnc-port-*); no Wi-Fi
 ```
+
+If a Wi-Fi network is listed (set in Raspberry Pi Imager, for example), remove it:
+`sudo nmcli connection delete "<name>"`.
 
 If a service isn't running: `sudo docker compose logs <service>`.
 
@@ -172,7 +223,14 @@ Reboot once (`sudo reboot`) and check again: everything should come back on its 
 
 ## 9. First login and configuration
 
-1. Open `https://<OFFICE_HOSTNAME>:8443`.
+1. Open `https://<OFFICE_HOSTNAME>:8443` from an office PC.
+   - Type the whole address, with `https://` and `:8443`.
+   - On the Pi's own screen (or Raspberry Pi Connect screen sharing), `https://localhost:8443`
+     always works, whatever the firewall allows.
+   - From your computer over SSH: `ssh -L 8443:127.0.0.1:8443 <user>@<pi>`, then open
+     `https://localhost:8443` on your computer.
+   - The page doesn't load from the office PC: its address isn't in the allowed office subnet
+     (point 3). Log in one of the other ways and add it.
    - The certificate is from the Pi's own internal CA, so the browser warns once. You
      can accept it, or install `/opt/cnc-server/data/caddy/caddy/pki/authorities/local/root.crt`
      as trusted on office PCs, or replace it with a certificate from your organisation (step 13).
@@ -192,12 +250,11 @@ In File Explorer, choose *This PC → Map network drive*, then:
 
 - Folder: `\\<OFFICE_HOSTNAME>\CNC`
 - Tick *Connect using different credentials*. When it asks, choose *More choices → Use a
-  different account* and enter an office user from step 9 **with the server's name in front**:
-  `CNC-FILES\programmer` for `OFFICE_HOSTNAME=cnc-files.example.com`. The name is the first
-  part of `OFFICE_HOSTNAME`, in capitals; the admin page's *Office users* page shows it.
+  different account* and enter an office user from step 9 **with `CNC-FILES\` in front**:
+  `CNC-FILES\programmer`. It is always `CNC-FILES`, whatever the Pi's hostname.
 
-Without the prefix, a PC on a Windows domain sends `DOMAIN\programmer` (its own domain) and
-the login fails.
+Without it, a PC on a Windows domain sends `DOMAIN\programmer` (its own domain) and the login
+fails. The admin page's *Office users* page shows the folder, the login and the command below.
 
 Or from a command prompt (`*` asks for the password):
 
@@ -267,23 +324,27 @@ ssh -L 9443:127.0.0.1:9443 <user>@<pi>      # then open https://localhost:9443
 
 ## 14. Maintenance
 
-**Update:**
+**Update** (when no machine is transferring; the services restart, about a minute):
 ```bash
 cd /opt/cnc-server
-sudo git pull
-sudo ./host/build-images.sh
-sudo docker compose up -d
+sudo ./host/update.sh
 ```
-Rebuild every month or two, even with no code changes, to pick up Debian security fixes
-in the images. The OS updates itself.
+It pulls the latest code, rebuilds the images, regenerates the server configs and firewall from
+your settings, and restarts everything. Settings, users, passwords and programs are kept. Run it
+every month or two even with no code changes, to pick up Debian security fixes in the images.
+The OS updates itself.
 
 **Back up:** see [15. Backups](#15-backups). For staff, print [RUNBOOK.md](RUNBOOK.md).
 
-**Reset the admin password:**
+**Reset the admin password** (forgotten, or someone else knew it). It can't be read back:
+the Pi keeps only a one-way hash.
 ```bash
 cd /opt/cnc-server
-sudo docker compose run --rm --no-deps cnc-admin python -m cncadmin.cli set-admin-password
+sudo ./host/reset-admin-password.sh             # type a new one
+sudo ./host/reset-admin-password.sh --generate  # or print a random one
 ```
+This logs out every browser that was logged in. There is no reset link on the web page:
+a login on the Pi with sudo is the proof of who you are. Logged in, change it under *Account*.
 
 **Logs:** the admin page *Logs*, `sudo docker compose logs <service>`, or Cockpit.
 

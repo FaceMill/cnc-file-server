@@ -259,7 +259,12 @@ loadCnc();
     {% if proto in ('smb', 'ftp', 'focas') %}
     <tr><th>Machine IP address</th><td class="mono">{{ m.ip }}</td></tr>
     <tr><th>Subnet mask</th><td class="mono">{{ netmask }}</td></tr>
+    {% if t == 'haas-classic' %}
+    <tr><th>Default gateway</th><td><span class="mono">{{ server_ip }}</span> (required: the Haas doesn't connect without it)</td></tr>
+    <tr><th>DNS server</th><td>blank, or <span class="mono">{{ server_ip }}</span> if the control refuses blank</td></tr>
+    {% else %}
     <tr><th>Default gateway / router</th><td class="mono">(blank / 0.0.0.0)</td></tr>
+    {% endif %}
     <tr><th>Server (Pi) address</th><td class="mono">{{ server_ip }}</td></tr>
     {% endif %}
     {% if proto == 'smb' %}
@@ -294,12 +299,17 @@ loadCnc();
   <p>On the SETNG page, Network settings (around settings 900–916; check your machine's manual for the exact numbers):</p>
   <ol>
     <li>CNC Network Name: a short unique name, e.g. <span class="mono">{{ m.name | upper }}</span></li>
-    <li>Obtain Address Automatically: <strong>OFF</strong>; IP, subnet mask and gateway as above</li>
+    <li>Obtain Address Automatically: <strong>OFF</strong>; IP, subnet mask, gateway and DNS as above</li>
     <li>Domain/Workgroup <span class="mono">{{ site.workgroup }}</span></li>
-    <li>Remote Server Name <span class="mono">{{ server_ip }}</span>, Remote Share Path <span class="mono">{{ m.name }}</span></li>
-    <li>User Name and Password as above</li>
-    <li>Power-cycle the control. The share appears as the network device in List Program.</li>
+    <li>Remote Server Name <span class="mono">{{ server_ip }}</span> (the address, not a computer name),
+      Remote Share Path <span class="mono">{{ m.name | upper }}</span></li>
+    <li>User Name <span class="mono">{{ m.name | upper }}</span> and the password above. The keyboard has capitals only;
+      the share and user name work in capitals, and the password is typed exactly as shown.</li>
+    <li>Press WRITE/ENTER after each value, then power-cycle the control. The share appears as the network device
+      in List Program. Open the settings again to check they were kept.</li>
   </ol>
+  <p class="hint">Alarm 971 at power-up, or no connection: the control still has settings from an old office network
+    (a server name such as a Windows PC's, office DNS servers). Replace every one of them with the values above.</p>
   {% elif t == 'haas-ngc' %}
   <ol>
     <li>Press SETTING, then go to the <strong>Network</strong> tab. Under <strong>Wired Connection</strong>: DHCP Off; IP, subnet mask and gateway as above. Apply.</li>

@@ -19,7 +19,8 @@ network. This server sits between the two:
                                     /srv/cnc/<machine>/   (one folder per machine)
 ```
 
-- Office users map one encrypted SMB3 share (`\\<pi>\CNC`) with one folder per machine.
+- Office users map one encrypted SMB3 share (`\\<pi>\CNC`), logging in as `CNC-FILES\<user>`,
+  with one folder per machine.
 - Each machine reaches **only its own folder**, over whatever its control supports.
 - Files flow both ways: drop a program in the office, run it at the machine; save at
   the machine, see it in the office. Nothing is copied: every protocol serves the same folders.
@@ -28,8 +29,9 @@ network. This server sits between the two:
 - Everything is managed from a web page: machines, users, network settings, live
   status, serial DNC, FOCAS, logs.
 
-> **Status:** fully tested in a simulated environment (see [Testing](#testing)), but
-> **not yet run on real Pi hardware or real CNC controls.** Do the bench test in
+> **Status:** fully tested in a simulated environment (see [Testing](#testing)), and running
+> on a Raspberry Pi 5 with Haas Classic controls. The other control types, FOCAS and serial
+> DNC have not run on real controls yet. Do the bench test in
 > [docs/INSTALL.md](docs/INSTALL.md) before connecting production machines.
 
 ---
@@ -73,17 +75,18 @@ FANUC never receives more than 10 characters after it sends XOFF (alarm 087).
 
 ## The admin web page
 
-`https://<pi-hostname>:8443`, user `admin`, password chosen during install.
+`https://<pi-hostname>:8443`, user `admin`, password chosen during install. On the Pi itself,
+`https://localhost:8443`.
 
 | Page | What you can do |
 |---|---|
 | **Status** | A **Health** card (services, disk, backups, serial ports, and the Pi itself: temperature, power, SSD wear, clock, UPS). Every machine: on the network (ping) or serial adapter present, connected / transferring now. Interface addresses, free disk, recent DNC activity. |
 | **Machines** | Add, edit, remove machines. Each machine page has its files (upload, view, download, delete to a recycle folder), the setup sheet for its control, and — for serial and FOCAS machines — live transfer status and controls. |
-| **Office users** | Logins for the office SMB3 share (`\\<pi>\CNC`). Passwords are stored only as hashes. |
+| **Office users** | Logins for the office SMB3 share (`\\<pi>\CNC`); users log in as `CNC-FILES\<user>`. Passwords are stored only as hashes. |
 | **Network** | Office side: DHCP or static, allowed office subnets (firewall). Changes **roll back automatically after 2 minutes** unless confirmed, so a mistake can't lock you out. CNC side: the Pi's address and every machine's IP. SMB workgroup. |
 | **Logs** | DNC activity (requests, sends, receives, port errors) and the last lines of every service's log. |
 | **Settings** | **Appearance**: colour theme (Blue, Slate, Forest, Safety orange, Dark, High contrast), optional accent colour, optional logo (PNG/JPEG, shown in the header, login page and printed setup sheets). **Recycle bin**: totals, **automatic emptying** of files deleted more than N days ago (default **60**, 0 = off), **Empty now**. **Alert emails**: SMTP settings and a test button; new, resolved and daily-repeated critical problems are emailed. |
-| **Account** | Change the admin password. |
+| **Account** | Change the admin password. Forgotten: `sudo ./host/reset-admin-password.sh` on the Pi. |
 
 [Cockpit](https://cockpit-project.org/) at `https://<pi-hostname>:9090` (Pi login)
 covers the operating system: updates, reboot, disks, system logs.
@@ -139,7 +142,8 @@ using its setup sheet ([docs/cnc-client-setup.md](docs/cnc-client-setup.md)).
 
 ## Day-to-day use
 
-- **Office:** map `\\<pi-hostname>\CNC` with an office user. Each machine has a folder;
+- **Office:** map `\\<pi-hostname>\CNC` with an office user, entered as `CNC-FILES\<user>`
+  ([INSTALL step 10](docs/INSTALL.md#10-map-the-share-on-office-pcs)). Each machine has a folder;
   drop programs in, pick up what machines saved. Deleted files go to a hidden `.recycle` folder
   and are removed for good after 60 days (adjustable on the Settings page).
 - **SMB / FTP machines:** load and save programs from the control's network device as usual.
@@ -165,13 +169,11 @@ using its setup sheet ([docs/cnc-client-setup.md](docs/cnc-client-setup.md)).
 
 ```bash
 cd /opt/cnc-server
-sudo git pull
-sudo ./host/build-images.sh          # also picks up Debian security updates in the images
-sudo docker compose up -d
+sudo ./host/update.sh      # pull, rebuild images, regenerate configs, restart
 ```
 
-The OS updates itself (unattended-upgrades). Rebuild the images every month or two even
-without code changes, to pick up security fixes. Samba is pinned to Debian Bookworm's 4.17
+The OS updates itself (unattended-upgrades). Run the update every month or two even
+without code changes, to pick up security fixes in the images. Samba is pinned to Debian Bookworm's 4.17
 on purpose: SMB1 is deprecated upstream, so test before moving to a newer release.
 
 ## Backups
@@ -225,7 +227,7 @@ network. The last full run passed everything:
 | Full stack: simulated Pi, office PCs, CNC machines, rogue device, disaster-recovery drill | 53 |
 
 Details in [tests/README.md](tests/README.md). Not covered without hardware:
-NetworkManager on the Pi, the FOCAS library on a real Pi 5, real CNC controls, real USB adapters.
+the FOCAS library on a real Pi 5, real CNC controls other than Haas Classic, real USB serial adapters.
 
 ## Repository layout
 
@@ -237,7 +239,8 @@ samba/            Samba image (used for both the office and the CNC file server)
 ftp/              vsftpd image for FTP machines
 focas/            FOCAS bridge (FANUC libfwlib32 via ctypes); lib/ for a FANUC-supplied library
 caddy/            HTTPS reverse proxy config
-host/             install.sh, setup-network.sh, firewall boot stub and fallback,
+host/             install.sh, update.sh, reset-admin-password.sh, setup-network.sh,
+                   setup-hotspot.sh, firewall boot stub and fallback,
                    backup.sh / restore.sh / setup-backup.sh, health.py, systemd/ timers
 docs/             INSTALL.md, RUNBOOK.md (shop staff), cnc-client-setup.md (per control),
                    SERIAL-PORTS.md (adapters, cables)
@@ -254,6 +257,9 @@ At runtime the Pi also has `config/` (site configuration and secrets), `generate
 | Symptom | Where to look |
 |---|---|
 | Machine can't connect | Status page (reachable? connected?), then Logs → `samba-cnc` or `ftp-cnc` for login errors from its IP. Check the control's settings against its setup sheet. |
+| Office PC: login refused | Enter the user as `CNC-FILES\<user>`. Error 1219: `net use * /delete`, then map again. |
+| Haas Classic: alarm 971 at power-up, or never connects | The control still has an old office server name or DNS: Remote Server Name and gateway `192.168.50.1`, DNS blank ([docs/cnc-client-setup.md](docs/cnc-client-setup.md#haas-classic-control)). |
+| Admin password forgotten | `sudo ./host/reset-admin-password.sh` on the Pi. |
 | Haas Classic login fails with the right password | Logs → `samba-cnc`. As a last resort add `lanman auth = yes` to `admin/cncadmin/conf_templates/smb-cnc.conf.j2` and save any setting to re-render. |
 | Serial machine: nothing received / garbled | Logs → DNC activity; [docs/SERIAL-PORTS.md](docs/SERIAL-PORTS.md) troubleshooting table (cable, settings, alarms 086/087). |
 | FOCAS: "cannot connect (code -16)" | CNC IP/cable, FOCAS2 enabled on port 8193, `docker logs focas-bridge`. |
@@ -263,7 +269,8 @@ At runtime the Pi also has `config/` (site configuration and secrets), `generate
 
 ## Known limitations
 
-- Not yet tested on real hardware (Pi, CNC controls, adapters).
+- Tested on a Raspberry Pi 5 with Haas Classic controls only; other controls, FOCAS and
+  serial adapters not yet on real hardware.
 - **FOCAS** on a Pi uses FANUC's 32-bit ARM library in a 32-bit container (FANUC has no 64-bit
   ARM build). A Pi 5's default 16K-page kernel can't run 32-bit ARM programs, so the installer
   switches it to Raspberry Pi's standard 4K-page kernel (`kernel=kernel8.img`) and asks for a reboot.

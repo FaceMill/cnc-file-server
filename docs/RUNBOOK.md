@@ -3,9 +3,9 @@
 A one-page guide for everyday problems. Print it and keep it near the machines.
 
 **Admin page:** `https://<server-name>:8443`. The person who looks after the server has the
-login. **Office share:** `\\<server-name>\CNC`. Log in as `<SERVER-NAME>\<your user>`, e.g.
-`CNC-FILES\programmer`: the server's short name in capitals, then a backslash, then your user
-name (shown on the admin page's *Office users* page).
+login. **Office share:** `\\<server-name>\CNC`. Log in as **`CNC-FILES\<your user>`**, e.g.
+`CNC-FILES\programmer`: always `CNC-FILES`, a backslash, then your user name. Without
+`CNC-FILES\`, a PC on the company domain sends its domain login and is refused.
 
 ---
 
@@ -25,6 +25,7 @@ name (shown on the admin page's *Office users* page).
    - **no reply**: a cable, switch, or IP setting problem at the machine.
    - **reachable** but not connected: the network-drive settings on the control.
      Compare them with the machine's **setup sheet** (Machines → machine → Print setup sheet).
+     Haas Classic: the Remote Server Name and gateway must be `192.168.50.1`, not a computer name.
 3. Haas Classic: after the server restarts, re-select the network device, or power-cycle the control.
 
 ### Serial (RS-232) machine

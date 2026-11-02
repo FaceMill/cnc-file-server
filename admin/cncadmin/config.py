@@ -140,18 +140,14 @@ def office_hostname():
     return os.environ.get("OFFICE_HOSTNAME", "").strip()
 
 
+OFFICE_SERVER_NAME = "CNC-FILES"
+
+
 def office_server_name():
-    """The office file server's Windows (NetBIOS) name: the first part of OFFICE_HOSTNAME,
-    e.g. CNC-FILES for cnc-files.example.com. Office users log in as NAME\\user, which
-    keeps Windows from sending their domain login instead."""
-    host = office_hostname()
-    try:
-        ipaddress.ip_address(host)
-        host = ""  # an IP address isn't a name
-    except ValueError:
-        pass
-    name = re.sub(r"[^A-Z0-9-]", "-", host.split(".")[0].upper())[:15].strip("-")
-    return name if name and not name.isdigit() else "CNC-FILES"
+    """The office file server's Windows (NetBIOS) name. Office users log in as
+    CNC-FILES\\user, which keeps a domain PC from sending its domain login (DOMAIN\\user)
+    instead. Fixed, so the login is the same on every install whatever the Pi is called."""
+    return OFFICE_SERVER_NAME
 
 
 def gen_password(length=8):

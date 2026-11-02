@@ -41,7 +41,7 @@ echo "== Static checks"
 ruff_out=$(docker run --rm -v "$PROJECT":/src:ro python:3.12-slim sh -c \
     'pip -q install ruff==0.6.9 2>/dev/null; cd /src && ruff check --no-cache --select E9,F,B006,B008,PLE --output-format concise admin/cncadmin focas tests' 2>&1)
 grep -q "All checks passed" <<<"$ruff_out" && record "ruff (Python errors)" "PASS" || { echo "$ruff_out" | tail -5; record "ruff (Python errors)" "FAIL"; }
-docker run --rm -v "$PROJECT":/src:ro koalaman/shellcheck:stable -S warning /src/host/install.sh /src/host/setup-network.sh /src/host/setup-hotspot.sh \
+docker run --rm -v "$PROJECT":/src:ro koalaman/shellcheck:stable -S warning /src/host/install.sh /src/host/setup-network.sh /src/host/setup-hotspot.sh /src/host/reset-admin-password.sh /src/host/update.sh \
     /src/host/backup.sh /src/host/restore.sh /src/host/setup-backup.sh /src/tests/test_backup.sh \
     /src/samba/entrypoint.sh /src/ftp/entrypoint.sh /src/tests/run_all.sh /src/tests/fullstack.sh \
     && record "shellcheck" "PASS" || record "shellcheck" "FAIL"

@@ -1,6 +1,7 @@
 import copy
 import datetime
 import glob
+import hashlib
 import itertools
 import functools
 import hmac
@@ -36,7 +37,8 @@ PENDING_ALLOWED = {"web.login", "web.logout", "web.network_confirm", "web.networ
 def login_required(view):
     @functools.wraps(view)
     def wrapped(*args, **kwargs):
-        if not session.get("user"):
+        if not session.get("user") or session.get("pw") != password_tag():
+            session.clear()  # a password change or reset logs out every session
             return redirect(url_for("web.login", next=request.path))
         return view(*args, **kwargs)
     return wrapped
@@ -103,6 +105,12 @@ def _recent_failures(ip):
         return times
 
 
+def password_tag():
+    """Short fingerprint of the stored password hash, kept in the session cookie."""
+    stored = config.admin_password_hash()
+    return hashlib.sha256(stored.encode()).hexdigest()[:16] if stored else None
+
+
 def safe_next(nxt):
     """Only local paths: '/x' but not '//host' or '/\\host' (browsers treat \\ as /)."""
     if nxt.startswith("/") and not nxt.startswith("//") and "\\" not in nxt and ":" not in nxt.split("?")[0]:
@@ -122,6 +130,7 @@ def login():
                 and check_password_hash(stored, request.form.get("password", ""))):
             session.clear()
             session["user"] = "admin"
+            session["pw"] = password_tag()
             return redirect(safe_next(request.args.get("next", "")))
         with _login_lock:
             _login_failures.setdefault(ip, []).append(time.time())
@@ -148,6 +157,7 @@ def account():
             flash("New passwords do not match.", "error")
         else:
             config.set_admin_password_hash(generate_password_hash(new))
+            session["pw"] = password_tag()  # stay logged in here; other sessions are logged out
             flash("Admin password changed.", "ok")
             return redirect(url_for("web.dashboard"))
     return render_template("account.html")

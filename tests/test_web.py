@@ -111,6 +111,20 @@ check("Not confirmed in time" in c.get(BASE + "/network").get_data(as_text=True)
 
 r = post("/account", current="correct-horse-1", new="another-pass-2", repeat="another-pass-2")
 check(any("changed" in m for _, m in flashes(r)), "admin password change")
+check(c.get(BASE + "/").status_code == 200, "still logged in after changing own password")
+other = app.test_client()
+other.environ_base["REMOTE_ADDR"] = "10.20.5.6"
+other.get(BASE + "/login")
+with other.session_transaction(base_url=BASE) as s:
+    tok = s["csrf"]
+other.post(BASE + "/login", data={"csrf": tok, "username": "admin", "password": "another-pass-2"})
+check(other.get(BASE + "/").status_code == 200, "second browser logged in")
+config.set_admin_password_hash(generate_password_hash("reset-pass-3"))  # host/reset-admin-password.sh
+check(c.get(BASE + "/").status_code == 302 and other.get(BASE + "/").status_code == 302,
+      "password reset on the Pi logs out every session")
+check("Forgot the password?" in c.get(BASE + "/login").get_data(as_text=True), "login page shows reset hint")
+r = post("/login", username="admin", password="reset-pass-3")
+check(c.get(BASE + "/").status_code == 200, "login with reset password")
 post("/logout")
 check(c.get(BASE + "/").status_code == 302, "logout")
 print("ALL PASSED")
