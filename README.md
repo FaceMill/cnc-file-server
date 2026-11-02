@@ -1,7 +1,10 @@
 # CNC File Server
 
-A Raspberry Pi appliance that lets old CNC machines share programs with the office
-**without exposing insecure protocols on the office network**.
+A set of Docker containers that lets old CNC machines share programs with the office
+**without exposing insecure protocols on the office network**. It runs on any Linux machine
+with Docker Engine and two network ports: a Raspberry Pi 5 is the reference hardware (and
+what "the Pi" means below), an x86-64 mini PC or a VM works too
+([other hosts](docs/INSTALL.md#other-hosts-not-a-pi)).
 
 Many CNC controls can only use SMB1 (Windows file sharing from the early 2000s), plain
 FTP, or an RS-232 serial cable. SMB1 is insecure and should not be on an office
@@ -11,7 +14,8 @@ network. This server sits between the two:
  Office LAN                                         Dedicated CNC switch (192.168.50.0/24)
  ──────────                                         ─────────────────────────────────────
  Office PCs ──SMB3 (encrypted)──▶ eth0 ┌──────────────┐ eth1 ◀──SMB1/2/3── Haas, Siemens, Heidenhain…
- Browser ─────HTTPS (admin)─────▶      │ Raspberry Pi │      ◀──FTP─────── FANUC Data Server / embedded
+ Browser ─────HTTPS (admin)─────▶      │ Linux server │      ◀──FTP─────── FANUC Data Server / embedded
+                                       │ (Pi 5 or PC) │
                                        │ 192.168.50.1 │      ───FOCAS────▶ FANUC with Ethernet
                                        │              │      ───TCP──────▶ serial device server ─RS-232─▶ old CNC
                                        │              │ USB ─RS-232──────────────────────────────────────▶ old CNC
@@ -116,6 +120,9 @@ covers the operating system: updates, reboot, disks, system logs.
   listed in [PLAN.md](PLAN.md#independent-review-security-and-correctness).
 
 ## Hardware
+
+Reference build (any Linux host with two network ports also works; see
+[other hosts](docs/INSTALL.md#other-hosts-not-a-pi)):
 
 - Raspberry Pi 5 (4 GB or 8 GB) with an NVMe HAT and NVMe SSD (avoid SD cards for 24/7 use)
 - USB 3 gigabit Ethernet adapter for the CNC network (RTL8153 or AX88179 chipset) — becomes `eth1`

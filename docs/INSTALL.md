@@ -1,7 +1,9 @@
 # Installing the CNC File Server
 
-Step-by-step installation on a Raspberry Pi 5. Plan on about two hours for the first
-install, including the bench test. Steps marked **(IT)** need your IT department.
+Step-by-step installation on a Raspberry Pi 5, the reference hardware. The server is a set of
+Docker containers, so any Linux machine with Docker Engine and two network ports works too:
+see [Other hosts](#other-hosts-not-a-pi). Plan on about two hours for the first install,
+including the bench test. Steps marked **(IT)** need your IT department.
 
 - [0. Before you start](#0-before-you-start)
 - [1. Assemble the hardware](#1-assemble-the-hardware)
