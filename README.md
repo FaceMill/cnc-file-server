@@ -38,6 +38,11 @@ network. This server sits between the two:
 > DNC have not run on real controls yet. Do the bench test in
 > [docs/INSTALL.md](docs/INSTALL.md) before connecting production machines.
 
+![The Status page: a health card, every machine with its connection type, address, network state and current activity, recent DNC activity, services, interface addresses and free disk](docs/img/status.png)
+
+*The Status page. The screenshots here are of a demo site with one machine of each
+supported kind; the machine names, addresses and programs in them are made up.*
+
 ---
 
 ## Contents
@@ -77,6 +82,21 @@ recommended, one per machine) or a **serial device server** on the CNC switch (e
 NPort 5110/5150 in "TCP Server" mode). The serial engine writes 4 bytes at a time so a
 FANUC never receives more than 10 characters after it sends XOFF (alarm 087).
 
+![A machine page for a Haas Classic control: the files in its folder, the settings to type into the control (address, share, user name, password, workgroup) and step-by-step instructions for that control](docs/img/machine-setup-sheet.png)
+
+*A machine page: its files, and the setup sheet with the exact values to enter on that
+control. "Print setup sheet" produces the same thing on paper for the machine operator.*
+
+![A FOCAS machine page: live CNC status (model, mode, active program, operator message) and the program list in CNC memory with Read and Delete buttons](docs/img/focas.png)
+
+*A FANUC on FOCAS: live control status and the programs in CNC memory, read and written
+directly over the network.*
+
+![An RS-232 machine page: DNC status showing a program being sent with a progress bar, the port settings, the program list with Send buttons, and files received from the machine](docs/img/serial-dnc.png)
+
+*An RS-232 machine drip-feeding a program it requested, with the files it has punched back
+to the server below.*
+
 ## The admin web page
 
 `https://<pi-hostname>:8443`, user `admin`, password chosen during install. On the Pi itself,
@@ -91,6 +111,16 @@ FANUC never receives more than 10 characters after it sends XOFF (alarm 087).
 | **Logs** | DNC activity (requests, sends, receives, port errors) and the last lines of every service's log. |
 | **Settings** | **Appearance**: colour theme (Blue, Slate, Forest, Safety orange, Dark, High contrast), optional accent colour, optional logo (PNG/JPEG, shown in the header, login page and printed setup sheets). **Recycle bin**: totals, **automatic emptying** of files deleted more than N days ago (default **60**, 0 = off), **Empty now**. **Alert emails**: SMTP settings and a test button; new, resolved and daily-repeated critical problems are emailed. |
 | **Account** | Change the admin password. Forgotten: `sudo ./host/reset-admin-password.sh` on the Pi. |
+
+![The Network page: office side with DHCP or static addressing and allowed office subnets, applied with a 2-minute rollback, and the CNC side with the server's address and every machine's address](docs/img/network.png)
+
+*The Network page. Office-side changes are applied with a 2-minute rollback, so a wrong
+address or subnet can't lock you out.*
+
+![The Appearance settings: six colour themes (Blue, Slate, Forest, Safety orange, Dark, High contrast), an optional accent colour and a logo upload](docs/img/appearance.png)
+
+*Settings → Appearance: colour theme, accent colour and a logo for the header, login page
+and printed setup sheets.*
 
 [Cockpit](https://cockpit-project.org/) at `https://<pi-hostname>:9090` (Pi login)
 covers the operating system: updates, reboot, disks, system logs.
@@ -250,7 +280,7 @@ host/             install.sh, update.sh, reset-admin-password.sh, setup-network.
                    setup-hotspot.sh, firewall boot stub and fallback,
                    backup.sh / restore.sh / setup-backup.sh, health.py, systemd/ timers
 docs/             INSTALL.md, RUNBOOK.md (shop staff), cnc-client-setup.md (per control),
-                   SERIAL-PORTS.md (adapters, cables)
+                   SERIAL-PORTS.md (adapters, cables), img/ (screenshots used here)
 tests/            all test suites and the simulated-Pi full-stack test
 docker-compose.yml
 PLAN.md           design decisions, review findings, open items
