@@ -10,13 +10,13 @@ C=/tmp/config.txt
 printf '[all]\ndtparam=audio=on\n[pi5]\n#kernel=kernel8.img\n' > $C; orig=$(cat $C)
 
 CONFIG_TXT=$C PAGESIZE_OVERRIDE=4096 bash "$K" >/dev/null 2>&1; rc=$?
-check "4K pages: nothing to do (exit 0), config.txt untouched" '[ $rc -eq 0 ] && [ "$(cat $C)" = "$orig" ] && [ ! -e $C.before-cnc-server ]'
+check "4K pages: nothing to do (exit 0), config.txt untouched" '[ $rc -eq 0 ] && [ "$(cat $C)" = "$orig" ] && [ ! -e $C.before-punchtape ]'
 
 out=$(CONFIG_TXT=$C PAGESIZE_OVERRIDE=16384 bash "$K" 2>&1); rc=$?
 check "16K pages: switched, reboot requested (exit 2)" '[ $rc -eq 2 ] && grep -q "Reboot" <<<"$out"'
 check "kernel=kernel8.img added under [all] (a commented line or [pi5] section doesn't count)" \
       '[ "$(tail -2 $C)" = "$(printf "[all]\nkernel=kernel8.img")" ]'
-check "backup of the original kept" '[ "$(cat $C.before-cnc-server)" = "$orig" ]'
+check "backup of the original kept" '[ "$(cat $C.before-punchtape)" = "$orig" ]'
 
 out=$(CONFIG_TXT=$C PAGESIZE_OVERRIDE=16384 bash "$K" 2>&1); rc=$?
 check "run again before rebooting: asks for the reboot, adds nothing" \

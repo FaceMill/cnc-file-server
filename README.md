@@ -1,4 +1,13 @@
-# CNC File Server
+# PunchTape
+
+**An open-source DNC server and CNC file server for Haas, FANUC, Siemens, Heidenhain,
+Mazak, Okuma and Fadal controls — SMB, FTP, FOCAS and RS-232 drip-feed from a Raspberry Pi
+or any Linux box.**
+
+Old controls read their programs from punched paper tape. Their descendants still speak
+SMB1, plain FTP and RS-232. PunchTape is the modern tape reader: it serves programs to
+machines that only speak those protocols, while the office side sees nothing but encrypted
+SMB3.
 
 A set of Docker containers that lets old CNC machines share programs with the office
 **without exposing insecure protocols on the office network**. It runs on any Linux machine
@@ -45,8 +54,33 @@ supported kind; the machine names, addresses and programs in them are made up.*
 
 ---
 
+## Is this what you were looking for?
+
+This project goes by a lot of names. If you searched for any of the following, you are in
+the right place:
+
+**DNC server** · **DNC software** · **CNC file server** · **CNC network share** ·
+**drip-feed server** / **dripfeeding** · **NC program management** · **machine tool file
+transfer** · **shop floor file server** · **SMB1 isolation for CNC** · **legacy SMB
+gateway** · **serial DNC over Ethernet** · **FANUC FOCAS file transfer** ·
+**Raspberry Pi CNC server**
+
+**Commercial products that solve the same problem:** CIMCO DNC-Max and CIMCO Edit,
+Predator DNC, FANUC DNC, Shop Floor Automations, NC-Base, Memex, Scytec. PunchTape is a
+free, self-hosted alternative covering the core of what those do — serving programs over
+SMB/FTP/FOCAS and drip-feeding over RS-232, with a web admin page. It does **not** try to
+match their editors, backplotters, post-processors or MDC/OEE reporting.
+
+**Controls it is built for:** Haas Classic and NGC · FANUC 0i-D/0i-F, 16i/18i/21i,
+30i/31i/32i, 0-M and other RS-232 FANUCs · Siemens Sinumerik 840D powerline (PCU 50),
+840D sl and 828D · Heidenhain TNC and iTNC · Mazak Matrix and Smooth · Okuma OSP-P ·
+Hurco · Fadal · Brother · Mitsubishi M70/M80.
+
+---
+
 ## Contents
 
+- [Is this what you were looking for?](#is-this-what-you-were-looking-for)
 - [Supported machines and connection types](#supported-machines-and-connection-types)
 - [The admin web page](#the-admin-web-page)
 - [Security model](#security-model)
@@ -168,8 +202,8 @@ The full step-by-step guide is **[docs/INSTALL.md](docs/INSTALL.md)**. In short:
 
 ```bash
 # On a Raspberry Pi 5 running Raspberry Pi OS Lite 64-bit, eth0 on the office network
-sudo git clone https://github.com/<your-account>/cnc-file-server.git /opt/cnc-server
-cd /opt/cnc-server
+sudo git clone https://github.com/<your-account>/punchtape.git /opt/punchtape
+cd /opt/punchtape
 sudo cp .env.example .env && sudo nano .env      # set OFFICE_HOSTNAME
 sudo ./host/install.sh                            # ~15–30 min; asks for the admin password
 ```
@@ -205,7 +239,7 @@ using its setup sheet ([docs/cnc-client-setup.md](docs/cnc-client-setup.md)).
 ## Updating
 
 ```bash
-cd /opt/cnc-server
+cd /opt/punchtape
 sudo ./host/update.sh      # pull, rebuild images, regenerate configs, restart
 ```
 
@@ -219,7 +253,7 @@ Nightly, encrypted, deduplicated backups of every program (`/srv/cnc`) and the w
 configuration (`config/`, `.env`) with restic, checked weekly:
 
 ```bash
-sudo /opt/cnc-server/host/setup-backup.sh      # choose a destination (USB disk, SFTP, REST server)
+sudo /opt/punchtape/host/setup-backup.sh      # choose a destination (USB disk, SFTP, REST server)
 ```
 
 Write down the repository password it shows. The Status page warns if a backup fails or is
@@ -232,7 +266,7 @@ test rehearses the recovery every run.
 ## Monitoring and alerts
 
 `host/health.py` (every 5 minutes) reports the Pi's temperature, under-voltage and
-throttling, SSD wear and SMART status, clock sync and UPS state. cnc-admin combines this
+throttling, SSD wear and SMART status, clock sync and UPS state. punchtape-admin combines this
 with service, disk, backup and serial-port checks into the **Health** card on the Status
 page, and, if configured on the Settings page, emails new problems, resolutions, and a
 daily reminder for anything critical. Setting up NTP and a UPS (clean shutdown on power
@@ -269,9 +303,9 @@ the FOCAS library on a real Pi 5, real CNC controls other than Haas Classic, rea
 ## Repository layout
 
 ```
-admin/            cnc-admin: Flask web app (config model, rendering, serial DNC, FOCAS client)
-  cncadmin/conf_templates/   Jinja templates for smb.conf, vsftpd.conf, nftables
-  cncadmin/templates/        web pages
+admin/            punchtape-admin: Flask web app (config model, rendering, serial DNC, FOCAS client)
+  punchtape/conf_templates/   Jinja templates for smb.conf, vsftpd.conf, nftables
+  punchtape/templates/        web pages
 samba/            Samba image (used for both the office and the CNC file server)
 ftp/              vsftpd image for FTP machines
 focas/            FOCAS bridge (FANUC libfwlib32 via ctypes); lib/ for a FANUC-supplied library
@@ -297,11 +331,11 @@ At runtime the Pi also has `config/` (site configuration and secrets), `generate
 | Office PC: login refused | Enter the user as `CNC-FILES\<user>`. Error 1219: `net use * /delete`, then map again. |
 | Haas Classic: alarm 971 at power-up, or never connects | The control still has an old office server name or DNS: Remote Server Name and gateway `192.168.50.1`, DNS blank ([docs/cnc-client-setup.md](docs/cnc-client-setup.md#haas-classic-control)). |
 | Admin password forgotten | `sudo ./host/reset-admin-password.sh` on the Pi. |
-| Haas Classic login fails with the right password | Logs → `samba-cnc`. As a last resort add `lanman auth = yes` to `admin/cncadmin/conf_templates/smb-cnc.conf.j2` and save any setting to re-render. |
+| Haas Classic login fails with the right password | Logs → `samba-cnc`. As a last resort add `lanman auth = yes` to `admin/punchtape/conf_templates/smb-cnc.conf.j2` and save any setting to re-render. |
 | Serial machine: nothing received / garbled | Logs → DNC activity; [docs/SERIAL-PORTS.md](docs/SERIAL-PORTS.md) troubleshooting table (cable, settings, alarms 086/087). |
 | FOCAS: "cannot connect (code -16)" | CNC IP/cable, FOCAS2 enabled on port 8193, `docker logs focas-bridge`. |
 | Locked out after a network change | Wait 2 minutes: unconfirmed changes revert automatically. |
-| Admin page down | `sudo docker compose ps` and `sudo docker compose logs cnc-admin caddy` in `/opt/cnc-server`. |
+| Admin page down | `sudo docker compose ps` and `sudo docker compose logs punchtape-admin caddy` in `/opt/punchtape`. |
 | Firewall | `sudo nft list ruleset`. The rules are in `generated/nftables.conf`; never edit them by hand — they're regenerated from the admin page. |
 
 ## Known limitations

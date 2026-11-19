@@ -1,7 +1,7 @@
 """Regression checks for the second review's findings."""
 import glob, io, json, os, re, time
 from werkzeug.security import generate_password_hash
-from cncadmin import config, create_app, monitor, network, system
+from punchtape import config, create_app, monitor, network, system
 
 fails = []
 

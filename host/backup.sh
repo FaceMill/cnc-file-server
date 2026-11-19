@@ -1,20 +1,20 @@
 #!/bin/bash
 # Nightly backup of machine programs and configuration with restic
-# (run by cnc-backup.timer; safe to run by hand: sudo /opt/cnc-server/host/backup.sh).
+# (run by punchtape-backup.timer; safe to run by hand: sudo /opt/punchtape/host/backup.sh).
 #
-# Destination and password come from /etc/cnc-backup.env (see host/cnc-backup.env.example;
+# Destination and password come from /etc/punchtape-backup.env (see host/punchtape-backup.env.example;
 # host/setup-backup.sh creates it). The result is written to config/backup-status.json,
 # which the admin page shows and alerts on.
 set -uo pipefail
 
 PROJECT_DIR=${PROJECT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}
 DATA_DIR=${DATA_DIR:-/srv/cnc}
-ENV_FILE=${CNC_BACKUP_ENV:-/etc/cnc-backup.env}
+ENV_FILE=${CNC_BACKUP_ENV:-/etc/punchtape-backup.env}
 STATUS_FILE=${STATUS_FILE:-$PROJECT_DIR/config/backup-status.json}
 # The last 3 runs are always kept too, so a manual backup before a change survives that night's run.
 KEEP=(--keep-last 3 --keep-daily 14 --keep-weekly 8 --keep-monthly 12)
 
-MARKER=.cnc-backup-repository   # on local destinations: proves the backup disk is mounted
+MARKER=.punchtape-backup-repository   # on local destinations: proves the backup disk is mounted
 
 status() {  # result, message -- JSON written by Python so any message text stays valid
     mkdir -p "$(dirname "$STATUS_FILE")"

@@ -1,9 +1,9 @@
 """Setup hotspot (OFFICE_MODE=hotspot): the office side is the Pi's own access point.
-cncadmin.cli office-mode, the generated firewall (checked with the real nft) and Samba
+punchtape.cli office-mode, the generated firewall (checked with the real nft) and Samba
 config, validation, and the network page."""
 import os, re, subprocess
 from werkzeug.security import generate_password_hash
-from cncadmin import config, create_app
+from punchtape import config, create_app
 
 fails = []
 
@@ -15,7 +15,7 @@ def check(cond, msg):
 
 
 def cli(*args):
-    return subprocess.run(["python", "-m", "cncadmin.cli", *args], capture_output=True, text=True)
+    return subprocess.run(["python", "-m", "punchtape.cli", *args], capture_output=True, text=True)
 
 
 def generated(name):
@@ -98,7 +98,7 @@ check(r.returncode == 0 and config.load()["office"]["allowed_subnets"] == site["
 
 # --- Settings page: switching the hotspot on and off (with rollback) ---------------
 import time
-from cncadmin.network import office_change, HOTSPOT_CONFIRM_SECONDS
+from punchtape.network import office_change, HOTSPOT_CONFIRM_SECONDS
 
 
 def applied():

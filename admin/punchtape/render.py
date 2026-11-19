@@ -20,7 +20,7 @@ def _single_line(value):
     return text
 
 
-_env = Environment(loader=PackageLoader("cncadmin", "conf_templates"),
+_env = Environment(loader=PackageLoader("punchtape", "conf_templates"),
                    trim_blocks=True, lstrip_blocks=True, finalize=_single_line,
                    keep_trailing_newline=True, undefined=StrictUndefined)
 

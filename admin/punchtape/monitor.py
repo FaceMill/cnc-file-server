@@ -1,6 +1,6 @@
 """Health checks for the Status page, and alert emails.
 
-Combines what cnc-admin can see itself (services, disk, backups, serial ports) with
+Combines what punchtape-admin can see itself (services, disk, backups, serial ports) with
 the host snapshot written by host/health.py (temperature, power, SSD, time, UPS).
 Every CHECK_SECONDS the issues are compared with the last run; new and resolved
 problems are logged and, if enabled, emailed. Critical problems are re-sent daily.
@@ -17,7 +17,7 @@ from email.message import EmailMessage
 
 from . import config, events, serial_dnc, system
 
-log = logging.getLogger("cncadmin")
+log = logging.getLogger("punchtape")
 
 CHECK_SECONDS = 300
 FIRST_CHECK_SECONDS = 60
@@ -25,7 +25,7 @@ REMIND_SECONDS = 24 * 3600
 HOST_HEALTH_FILE = os.path.join(config.CONFIG_DIR, "host-health.json")
 BACKUP_STATUS_FILE = os.path.join(config.CONFIG_DIR, "backup-status.json")
 STATE_FILE = os.path.join(config.CONFIG_DIR, "alert-state.json")
-REQUIRED_SERVICES = ["samba-office", "samba-cnc", "ftp-cnc", "focas-bridge", "caddy", "cnc-admin"]
+REQUIRED_SERVICES = ["samba-office", "samba-cnc", "ftp-cnc", "focas-bridge", "caddy", "punchtape-admin"]
 WARN, CRIT = "warning", "critical"
 
 
@@ -71,11 +71,11 @@ def issues():
     # Host snapshot (host/health.py)
     h = _read_json(HOST_HEALTH_FILE)
     if h is None:
-        add("host:missing", WARN, "Host health monitor hasn't reported (cnc-health.timer)")
+        add("host:missing", WARN, "Host health monitor hasn't reported (punchtape-health.timer)")
     else:
         age = _age(h.get("time"))
         if age is not None and age > 20 * 60:
-            add("host:stale", WARN, f"Host health report is {_hours(age)} old (cnc-health.timer)")
+            add("host:stale", WARN, f"Host health report is {_hours(age)} old (punchtape-health.timer)")
         t = h.get("soc_temperature")
         t = t if isinstance(t, (int, float)) else None
         if t is not None and t >= 85:

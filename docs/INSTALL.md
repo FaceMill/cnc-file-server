@@ -1,4 +1,4 @@
-# Installing the CNC File Server
+# Installing PunchTape
 
 Step-by-step installation on a Raspberry Pi 5, the reference hardware. The server is a set of
 Docker containers, so any Linux machine with Docker Engine and two network ports works too:
@@ -119,16 +119,16 @@ office side, several CNC ports) are set in `.env` (`OFFICE_IF`, `CNC_IF`).
 
 ```bash
 sudo apt install -y git
-sudo git clone https://github.com/<owner>/cnc-file-server.git /opt/cnc-server   # this repository's URL
+sudo git clone https://github.com/<owner>/punchtape.git /opt/punchtape   # this repository's URL
 ```
 
-(Alternatively, copy the folder from your computer: `scp -r cnc-file-server <user>@<pi>:` then
-`sudo mv ~/cnc-file-server /opt/cnc-server`.)
+(Alternatively, copy the folder from your computer: `scp -r punchtape <user>@<pi>:` then
+`sudo mv ~/punchtape /opt/punchtape`.)
 
 ## 6. Configure `.env`
 
 ```bash
-cd /opt/cnc-server
+cd /opt/punchtape
 sudo cp .env.example .env
 sudo nano .env
 ```
@@ -165,7 +165,7 @@ Run it inside `tmux`, so a dropped SSH connection doesn't stop it:
 
 ```bash
 tmux new -s install
-cd /opt/cnc-server
+cd /opt/punchtape
 sudo ./host/install.sh 2>&1 | tee ~/install.log
 ```
 
@@ -206,9 +206,9 @@ end of step 6, then run the installer again.
 ## 8. Check the installation
 
 ```bash
-cd /opt/cnc-server
+cd /opt/punchtape
 sudo docker compose ps                  # 6 services "running": samba-office, samba-cnc,
-                                        # ftp-cnc, focas-bridge, cnc-admin, caddy
+                                        # ftp-cnc, focas-bridge, punchtape-admin, caddy
 ip -br addr                             # eth0 office address, eth1 192.168.50.1/24
 sysctl net.ipv4.ip_forward              # = 0
 sudo nft list ruleset | head -30        # the generated firewall
@@ -234,7 +234,7 @@ Reboot once (`sudo reboot`) and check again: everything should come back on its 
    - The page doesn't load from the office PC: its address isn't in the allowed office subnet
      (point 3). Log in one of the other ways and add it.
    - The certificate is from the Pi's own internal CA, so the browser warns once. You
-     can accept it, or install `/opt/cnc-server/data/caddy/caddy/pki/authorities/local/root.crt`
+     can accept it, or install `/opt/punchtape/data/caddy/caddy/pki/authorities/local/root.crt`
      as trusted on office PCs, or replace it with a certificate from your organisation (step 13).
 2. Log in as `admin` with the password from step 7.
 3. **Network** page: the installer allowed only the office subnet `eth0` was on.
@@ -307,12 +307,12 @@ Do one machine at a time, starting with the least critical:
 **Use a FANUC-supplied FOCAS library** instead of the downloaded one:
 
 ```bash
-sudo cp libfwlib32.so /opt/cnc-server/focas/lib/libfwlib32.so   # the build for FOCAS_PLATFORM in .env
-cd /opt/cnc-server && sudo ./host/build-images.sh focas && sudo docker compose up -d focas-bridge
+sudo cp libfwlib32.so /opt/punchtape/focas/lib/libfwlib32.so   # the build for FOCAS_PLATFORM in .env
+cd /opt/punchtape && sudo ./host/build-images.sh focas && sudo docker compose up -d focas-bridge
 ```
 
 **A certificate from your organisation's CA:**
-1. Put `cert.pem` and `key.pem` in `/opt/cnc-server/data/caddy/`.
+1. Put `cert.pem` and `key.pem` in `/opt/punchtape/data/caddy/`.
 2. In `caddy/Caddyfile`, replace each `tls internal` with `tls /data/cert.pem /data/key.pem`.
 3. Run `sudo docker compose restart caddy`.
 
@@ -328,7 +328,7 @@ ssh -L 9443:127.0.0.1:9443 <user>@<pi>      # then open https://localhost:9443
 
 **Update** (when no machine is transferring; the services restart, about a minute):
 ```bash
-cd /opt/cnc-server
+cd /opt/punchtape
 sudo ./host/update.sh
 ```
 It pulls the latest code, rebuilds the images, regenerates the server configs and firewall from
@@ -341,7 +341,7 @@ The OS updates itself.
 **Reset the admin password** (forgotten, or someone else knew it). It can't be read back:
 the Pi keeps only a one-way hash.
 ```bash
-cd /opt/cnc-server
+cd /opt/punchtape
 sudo ./host/reset-admin-password.sh             # type a new one
 sudo ./host/reset-admin-password.sh --generate  # or print a random one
 ```
@@ -368,7 +368,7 @@ deduplicated, and checked once a week. The last 3 runs are kept, plus 14 daily,
    Ask IT for space on a file server if possible.
 2. Run:
    ```bash
-   sudo /opt/cnc-server/host/setup-backup.sh
+   sudo /opt/punchtape/host/setup-backup.sh
    ```
    It asks for the destination and creates a random repository password, then shows it.
    **Write the password down and keep it off the Pi.** Without it, the backups can't be
@@ -378,9 +378,9 @@ deduplicated, and checked once a week. The last 3 runs are kept, plus 14 daily,
 
 By hand:
 ```bash
-sudo /opt/cnc-server/host/backup.sh                    # back up now
-sudo /opt/cnc-server/host/restore.sh list              # list backups
-sudo /opt/cnc-server/host/restore.sh file /srv/cnc/haas1/O1234.NC   # old version next to the current file
+sudo /opt/punchtape/host/backup.sh                    # back up now
+sudo /opt/punchtape/host/restore.sh list              # list backups
+sudo /opt/punchtape/host/restore.sh file /srv/cnc/haas1/O1234.NC   # old version next to the current file
 ```
 
 ## 16. Alerts, time and UPS
@@ -395,7 +395,7 @@ reminder for anything critical. It checks:
 - serial ports;
 - the Pi itself: temperature, under-voltage and throttling, SSD wear and SMART status, clock and UPS.
 
-The Pi's checks come from `host/health.py`, which `cnc-health.timer` runs every 5 minutes.
+The Pi's checks come from `host/health.py`, which `punchtape-health.timer` runs every 5 minutes.
 
 **Time:** the Pi syncs its clock from the internet by default. If IT has a time server:
 ```bash
@@ -449,14 +449,14 @@ You need the backup destination, the **repository password** from step 15, and t
 2. Point the new Pi at the old backups. Paste the saved password in place of
    `<saved repository password>`:
    ```bash
-   echo '<saved repository password>' | sudo tee /etc/cnc-backup.pass >/dev/null
-   printf 'RESTIC_REPOSITORY=<destination>\nRESTIC_PASSWORD_FILE=/etc/cnc-backup.pass\n' | sudo tee /etc/cnc-backup.env >/dev/null
-   sudo chmod 600 /etc/cnc-backup.pass /etc/cnc-backup.env
+   echo '<saved repository password>' | sudo tee /etc/punchtape-backup.pass >/dev/null
+   printf 'RESTIC_REPOSITORY=<destination>\nRESTIC_PASSWORD_FILE=/etc/punchtape-backup.pass\n' | sudo tee /etc/punchtape-backup.env >/dev/null
+   sudo chmod 600 /etc/punchtape-backup.pass /etc/punchtape-backup.env
    ```
 3. Restore everything:
    ```bash
-   sudo /opt/cnc-server/host/restore.sh list
-   sudo /opt/cnc-server/host/restore.sh all
+   sudo /opt/punchtape/host/restore.sh list
+   sudo /opt/punchtape/host/restore.sh all
    ```
    This puts back every program and the whole configuration: machines, users, passwords,
    network settings and the admin password. It then regenerates the server configs,

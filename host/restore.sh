@@ -13,14 +13,14 @@ set -euo pipefail
 
 PROJECT_DIR=${PROJECT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}
 DATA_DIR=${DATA_DIR:-/srv/cnc}
-ENV_FILE=${CNC_BACKUP_ENV:-/etc/cnc-backup.env}
+ENV_FILE=${CNC_BACKUP_ENV:-/etc/punchtape-backup.env}
 if [ -f "$ENV_FILE" ]; then
     set -a
     # shellcheck disable=SC1090
     . "$ENV_FILE"
     set +a
 fi
-: "${RESTIC_REPOSITORY:?No backup destination: create $ENV_FILE (see host/cnc-backup.env.example)}"
+: "${RESTIC_REPOSITORY:?No backup destination: create $ENV_FILE (see host/punchtape-backup.env.example)}"
 export RESTIC_REPOSITORY RESTIC_PASSWORD_FILE
 
 cmd=${1:-}
@@ -68,7 +68,7 @@ all)
     rm -f "$PROJECT_DIR/config/pending-office.json" "$PROJECT_DIR/config/alert-state.json"
     if [ "${SKIP_DOCKER:-}" != 1 ]; then
         cd "$PROJECT_DIR"
-        docker compose run --rm --no-deps cnc-admin python -m cncadmin.cli render
+        docker compose run --rm --no-deps punchtape-admin python -m punchtape.cli render
         nft -f /etc/nftables.conf
         docker compose up -d
     fi

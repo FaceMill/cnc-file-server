@@ -1,4 +1,4 @@
-"""cnc-admin FOCAS workflow against a fake focas-bridge (simulated CNC memory)."""
+"""punchtape-admin FOCAS workflow against a fake focas-bridge (simulated CNC memory)."""
 import glob, json, os, re, threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
@@ -89,7 +89,7 @@ class FakeBridge(BaseHTTPRequestHandler):
 srv = ThreadingHTTPServer(("127.0.0.1", 8095), FakeBridge)
 threading.Thread(target=srv.serve_forever, daemon=True).start()
 
-from cncadmin import config, create_app, events
+from punchtape import config, create_app, events
 
 config.set_admin_password_hash(generate_password_hash("correct-horse-1"))
 app = create_app()

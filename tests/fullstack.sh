@@ -46,22 +46,22 @@ docker run -d --name pi --hostname cnc-files --privileged --network pi-office --
 docker network connect --ip 192.168.50.1 pi-cnc pi
 for _ in $(seq 1 30); do pi 'docker info' >/dev/null 2>&1 && break; sleep 2; done
 pi 'apk add -q nftables restic bash python3 iproute2 curl >/dev/null'   # before the firewall: it cuts the simulation's DNS
-docker save local/cnc-admin:1.0 local/cnc-samba:1.0 local/cnc-ftp:1.0 local/cnc-focas:1.0 caddy:2.11.7 | docker exec -i pi docker load >/dev/null
-pi 'mkdir -p /opt/cnc-server'
-tar -C "$PROJECT" --exclude=.vscode --exclude=tests --exclude=config --exclude=generated --exclude=data -cf - . | docker exec -i pi tar -C /opt/cnc-server -xf -
+docker save local/punchtape-admin:1.0 local/punchtape-samba:1.0 local/punchtape-ftp:1.0 local/punchtape-focas:1.0 caddy:2.11.7 | docker exec -i pi docker load >/dev/null
+pi 'mkdir -p /opt/punchtape'
+tar -C "$PROJECT" --exclude=.vscode --exclude=tests --exclude=config --exclude=generated --exclude=data -cf - . | docker exec -i pi tar -C /opt/punchtape -xf -
 
 echo "== Install (as host/install.sh, minus apt/systemd/NetworkManager)"
 pi '
-set -e; cd /opt/cnc-server
+set -e; cd /opt/punchtape
 cp .env.example .env && sed -i "s/^OFFICE_HOSTNAME=.*/OFFICE_HOSTNAME=cnc-files.test/; s/^OFFICE_IF=.*/OFFICE_IF='"$OIF"'/; s/^CNC_IF=.*/CNC_IF=\"'"$CNC_PORTS"'\"/" .env
 addgroup -g 2000 cncfiles; adduser -D -H -u 2000 -G cncfiles -s /sbin/nologin cncfiles
 mkdir -p /srv/cnc config generated data/caddy data/portainer
 chown 2000:2000 /srv/cnc; chmod 0770 /srv/cnc; chmod 0700 config generated
 sysctl -qw net.ipv4.ip_forward=0
-docker compose run --rm --no-deps cnc-admin python -m cncadmin.cli init --office-subnet 10.20.0.0/16 --office-if '"$OIF"' --cnc-if '"$CIF"' >/dev/null
-docker compose run --rm --no-deps cnc-admin python -m cncadmin.cli render >/dev/null
-docker compose run --rm --no-deps cnc-admin python -c "from werkzeug.security import generate_password_hash as g; from cncadmin import config; config.set_admin_password_hash(g(\"fullstack-pass-1\"))"
-sed "s|@PROJECT_DIR@|/opt/cnc-server|" host/nftables.conf > /etc/nftables.conf
+docker compose run --rm --no-deps punchtape-admin python -m punchtape.cli init --office-subnet 10.20.0.0/16 --office-if '"$OIF"' --cnc-if '"$CIF"' >/dev/null
+docker compose run --rm --no-deps punchtape-admin python -m punchtape.cli render >/dev/null
+docker compose run --rm --no-deps punchtape-admin python -c "from werkzeug.security import generate_password_hash as g; from punchtape import config; config.set_admin_password_hash(g(\"fullstack-pass-1\"))"
+sed "s|@PROJECT_DIR@|/opt/punchtape|" host/nftables.conf > /etc/nftables.conf
 nft -c -f /etc/nftables.conf && nft -f /etc/nftables.conf
 sed "s|@OFFICE_IF@|'"$OIF"'|" host/nftables-fallback.conf > /etc/nftables-fallback.conf
 nft -c -f /etc/nftables-fallback.conf
@@ -69,7 +69,7 @@ docker compose up -d --no-build >/dev/null 2>&1
 ' || { echo "install failed"; exit 1; }
 sleep 10
 running=$(pi 'docker ps --format "{{.Names}}"' | sort | tr '\n' ' ')
-[ "$running" = "caddy cnc-admin focas-bridge ftp-cnc samba-cnc samba-office " ] && ok "default stack: $running" || bad "unexpected containers: $running"
+[ "$running" = "caddy focas-bridge ftp-cnc punchtape-admin samba-cnc samba-office " ] && ok "default stack: $running" || bad "unexpected containers: $running"
 
 echo "== Clients"
 docker run -d --name office-pc --cap-add NET_ADMIN --network pi-office --ip 10.20.5.5 --add-host cnc-files.test:10.20.0.10 \
@@ -88,8 +88,8 @@ while True:
 A="docker exec office-pc python3 /fs_admin.py"
 echo "== Admin page over HTTPS (Caddy)"
 t "login by hostname" sh -c "$A login password=fullstack-pass-1 | grep -q '\[\]'"
-t "admin page answers by IP too (confirm after an IP change)" sh -c "docker exec office-pc curl -sk https://10.20.0.10:8443/login | grep -q 'CNC File Server'"
-t "admin page in the Pi's own browser (https://localhost:8443)" pi 'curl -sk https://localhost:8443/login | grep -q "CNC File Server"'
+t "admin page answers by IP too (confirm after an IP change)" sh -c "docker exec office-pc curl -sk https://10.20.0.10:8443/login | grep -q 'PunchTape'"
+t "admin page in the Pi's own browser (https://localhost:8443)" pi 'curl -sk https://localhost:8443/login | grep -q "PunchTape"'
 t "https://<pi>/ redirects to :8443" sh -c "docker exec office-pc curl -sk -o /dev/null -w '%{redirect_url}' --resolve cnc-files.test:443:10.20.0.10 https://cnc-files.test/ | grep -q ':8443/'"
 t "add office user" sh -c "$A post path=/users/add name=programmer password=Office-pass-1 repeat=Office-pass-1 | grep -q 'User added'"
 t "add FTP machine" sh -c "$A post path=/machines/new name=fanuc1 label=FANUC type=fanuc-dataserver ip=192.168.50.21 password=FANUCPW1 | grep -q added"
@@ -140,7 +140,7 @@ for pasv in (True, False):
 t "office sees FTP uploads" sh -c "docker exec office-pc $OFF -c 'cd fanuc1; ls' | grep -q O3001.NC"
 
 echo "== Serial DNC via device server 192.168.50.40"
-pi 'docker restart cnc-admin >/dev/null'; sleep 10
+pi 'docker restart punchtape-admin >/dev/null'; sleep 10
 t "punched program saved and visible to the office" sh -c "docker exec office-pc $OFF -c 'cd dnc1/received; ls' | grep -q O4444_"
 t "office can delete a received program" sh -c "docker exec office-pc $OFF -c 'cd dnc1/received; del O4444_*' && ! docker exec office-pc $OFF -c 'cd dnc1/received; ls' | grep -q O4444_"
 
@@ -151,19 +151,19 @@ n "bridge refuses requests without the token" pi 'wget -qO- "http://127.0.0.1:80
 echo "== Resilience"
 pi 'docker restart samba-cnc >/dev/null'; sleep 4
 t "machine logs in after samba-cnc restart" docker exec haas1 smbclient //192.168.50.1/haas1 -U "haas1%$H1" -m NT1 --option='client min protocol=NT1' -c ls
-t "fallback firewall loads if the generated one is broken" pi 'cp /opt/cnc-server/generated/nftables.conf /tmp/nft.bak && echo garbage > /opt/cnc-server/generated/nftables.conf && { nft -f /etc/nftables.conf 2>/dev/null || nft -f /etc/nftables-fallback.conf; } && nft list ruleset | grep -q "iifname \"'"$OIF"'\" tcp dport 22 accept"; rc=$?; cp /tmp/nft.bak /opt/cnc-server/generated/nftables.conf && nft -f /etc/nftables.conf; exit $rc'
+t "fallback firewall loads if the generated one is broken" pi 'cp /opt/punchtape/generated/nftables.conf /tmp/nft.bak && echo garbage > /opt/punchtape/generated/nftables.conf && { nft -f /etc/nftables.conf 2>/dev/null || nft -f /etc/nftables-fallback.conf; } && nft list ruleset | grep -q "iifname \"'"$OIF"'\" tcp dport 22 accept"; rc=$?; cp /tmp/nft.bak /opt/punchtape/generated/nftables.conf && nft -f /etc/nftables.conf; exit $rc'
 
 echo "== Disaster recovery (backup -> lose everything -> restore.sh all)"
-pi 'head -c 24 /dev/urandom | base64 > /etc/cnc-backup.pass && printf "RESTIC_REPOSITORY=/backup/repo\nRESTIC_PASSWORD_FILE=/etc/cnc-backup.pass\n" > /etc/cnc-backup.env'
+pi 'head -c 24 /dev/urandom | base64 > /etc/punchtape-backup.pass && printf "RESTIC_REPOSITORY=/backup/repo\nRESTIC_PASSWORD_FILE=/etc/punchtape-backup.pass\n" > /etc/punchtape-backup.env'
 # As host/setup-backup.sh does (it also enables a systemd timer, which this simulated Pi doesn't have)
-pi 'mkdir -p /backup/repo && . /etc/cnc-backup.env && export RESTIC_REPOSITORY RESTIC_PASSWORD_FILE && restic init >/dev/null && touch /backup/repo/.cnc-backup-repository'
-t "nightly backup script succeeds" pi '/opt/cnc-server/host/backup.sh >/dev/null 2>&1 && grep -q "\"ok\"" /opt/cnc-server/config/backup-status.json'
+pi 'mkdir -p /backup/repo && . /etc/punchtape-backup.env && export RESTIC_REPOSITORY RESTIC_PASSWORD_FILE && restic init >/dev/null && touch /backup/repo/.punchtape-backup-repository'
+t "nightly backup script succeeds" pi '/opt/punchtape/host/backup.sh >/dev/null 2>&1 && grep -q "\"ok\"" /opt/punchtape/config/backup-status.json'
 t "Status page shows the backup" sh -c "$A get path=/ n=200000 | grep -q 'last backup'"
 lose_everything() {
-    pi 'cd /opt/cnc-server && docker compose down >/dev/null 2>&1 && find /srv/cnc /opt/cnc-server/config -mindepth 1 -delete && [ -z "$(ls -A /srv/cnc)" ] && [ -z "$(ls -A /opt/cnc-server/config)" ]'
+    pi 'cd /opt/punchtape && docker compose down >/dev/null 2>&1 && find /srv/cnc /opt/punchtape/config -mindepth 1 -delete && [ -z "$(ls -A /srv/cnc)" ] && [ -z "$(ls -A /opt/punchtape/config)" ]'
 }
 t "programs and configuration wiped" lose_everything
-t "restore.sh all brings everything back" pi '/opt/cnc-server/host/restore.sh all >/tmp/restore.log 2>&1'
+t "restore.sh all brings everything back" pi '/opt/punchtape/host/restore.sh all >/tmp/restore.log 2>&1'
 sleep 10
 t "haas1 logs in with its original password and sees its programs" sh -c "docker exec haas1 smbclient //192.168.50.1/haas1 -U 'haas1%$H1' -m NT1 --option='client min protocol=NT1' -c ls | grep -q O1001.NC"
 t "office user works again" sh -c "docker exec office-pc $OFF -c 'cd fanuc1; ls' | grep -q O3001.NC"

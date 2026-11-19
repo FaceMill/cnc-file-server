@@ -1,4 +1,4 @@
-# CNC File Server: SMB1 ⇄ SMB3 Bridge on Raspberry Pi
+# PunchTape: a CNC file server and DNC server (SMB1 ⇄ SMB3 bridge)
 
 ## Goal
 
@@ -50,7 +50,7 @@ Not supported yet:
 - **No VLAN.** A dedicated switch for the CNCs on the Pi's second network port.
 - **IT approval required** before connecting the Pi to the office network.
 - **IT supplies** the office IP (DHCP reservation), hostname, and subnet.
-- **Web management**: a custom admin page (`cnc-admin`) owns all configuration.
+- **Web management**: a custom admin page (`punchtape-admin`) owns all configuration.
 
 ## Architecture
 
@@ -79,7 +79,7 @@ Not supported yet:
 ## Configuration model
 
 `config/site.json` is the single source of truth, edited through the admin page.
-From it, cnc-admin generates `generated/`:
+From it, punchtape-admin generates `generated/`:
 
 | Generated file      | Used by                                   |
 |---------------------|-------------------------------------------|
@@ -91,9 +91,9 @@ From it, cnc-admin generates `generated/`:
 | `ftp-users.txt`     | `ftp-cnc` (SHA-512 crypt hashes and each machine's IP) |
 | `nftables.conf`     | host firewall (included from `/etc/nftables.conf` at boot) |
 
-On every change, cnc-admin validates the whole config, rewrites the generated files,
+On every change, punchtape-admin validates the whole config, rewrites the generated files,
 and reloads or restarts only what changed: the firewall, `samba-cnc`, `ftp-cnc`, or `samba-office`.
-Serial DNC runs inside cnc-admin itself (it needs access to the USB serial adapters), with one
+Serial DNC runs inside punchtape-admin itself (it needs access to the USB serial adapters), with one
 listener thread per serial machine, restarted automatically when its settings change. Its event log
 is in `config/events.db`.
 
@@ -119,7 +119,7 @@ Safety features:
 - Login, CSRF protection, and secure session cookies. Only reachable over HTTPS from
   the office subnets.
 
-**Note:** cnc-admin controls the host firewall, network, and Docker, so it is
+**Note:** punchtape-admin controls the host firewall, network, and Docker, so it is
 effectively root on the Pi. Use a strong admin password.
 
 ## Other web tools
@@ -143,7 +143,7 @@ and reached over an SSH tunnel (see `docker-compose.yml`).
   folders (one for the office share, one per machine). Files deleted more than **60 days**
   ago are removed automatically (Settings page: adjustable, 0 = off; "Empty now" button).
   The age counts from deletion: moving a file into the recycle folder sets its change time.
-- **Nightly backups** off the Pi with restic (host/backup.sh, cnc-backup.timer), checked weekly,
+- **Nightly backups** off the Pi with restic (host/backup.sh, punchtape-backup.timer), checked weekly,
   restore drill automated (tests/test_backup.sh and the full-stack test).
 - **Pinned versions**: Debian Bookworm Samba 4.17 is pinned. SMB1 is deprecated
   upstream, so Samba is only upgraded on purpose, after testing.
@@ -233,7 +233,7 @@ Result: **no HIGH or CRITICAL finding with an available fix** in any of our imag
 
 Rebuild images regularly (`sudo ./host/build-images.sh`) and rescan:
 ```bash
-docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image --severity HIGH,CRITICAL local/cnc-admin:1.0
+docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image --severity HIGH,CRITICAL local/punchtape-admin:1.0
 ```
 
 ## Hardware (bill of materials)
@@ -250,7 +250,7 @@ docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image
 ## Install (summary)
 
 1. Flash Raspberry Pi OS Lite 64-bit to the NVMe drive, enable SSH, and connect eth0 to the office network.
-2. Copy this folder to `/opt/cnc-server`, then `cp .env.example .env` and set `OFFICE_HOSTNAME`.
+2. Copy this folder to `/opt/punchtape`, then `cp .env.example .env` and set `OFFICE_HOSTNAME`.
 3. `sudo ./host/install.sh`. This installs Docker, Cockpit, and nftables, creates the
    network connections, writes the initial config (3 machines with generated passwords),
    asks for the admin password, loads the firewall, and starts everything.
@@ -288,14 +288,14 @@ docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image
   only because the CNC network is isolated, with no gateway and no routing.
 - **Serial pin-outs and parameters** vary by control. Use a null modem with the
   CNC-side jumpers (see `docs/SERIAL-PORTS.md`), and test each cable and its settings on the bench first.
-- **serial-dnc repo**: its engine now lives in `admin/cncadmin/serial_dnc.py` and `dnc_files.py`.
+- **serial-dnc repo**: its engine now lives in `admin/punchtape/serial_dnc.py` and `dnc_files.py`.
   Fixes made in one place need copying to the other, or the standalone repo can be retired.
 
 - **Windows XP PCU 50** is itself an unsupported OS. The isolated switch, with no
   gateway and no routing, is what protects it. Don't connect it to anything else.
 - **Haas Classic authentication**: NTLMv1 is allowed. If a control still fails, look
   at the `samba-cnc` log. LANMAN auth (weaker still) can be added to
-  `admin/cncadmin/conf_templates/smb-cnc.conf.j2` as a last resort.
+  `admin/punchtape/conf_templates/smb-cnc.conf.j2` as a last resort.
 - **8.3 filenames** on older controls: name mangling is on (the default). Agree on a
   naming convention such as `O01234.NC`.
 - **Serial speed at high baud:** to stay within FANUC's XOFF limit the engine writes 4 bytes

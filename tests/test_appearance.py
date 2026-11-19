@@ -1,7 +1,7 @@
 """Settings → Appearance: colour themes, accent colour, logo upload."""
 import base64, io, json, os, re
 from werkzeug.security import generate_password_hash
-from cncadmin import appearance, config, create_app
+from punchtape import appearance, config, create_app
 
 fails = []
 

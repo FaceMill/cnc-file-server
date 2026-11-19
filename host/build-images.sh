@@ -21,10 +21,10 @@ FOCAS_PLATFORM=${FOCAS_PLATFORM:-linux/arm/v7}
 targets=("$@")
 [ ${#targets[@]} -gt 0 ] || targets=(admin samba ftp focas)
 for t in "${targets[@]}"; do
-    echo "== Building local/cnc-$t:1.0"
+    echo "== Building local/punchtape-$t:1.0"
     case "$t" in
-        admin|samba|ftp) docker build --pull --network host -t "local/cnc-$t:1.0" "$t" ;;
-        focas) docker build --pull --network host --platform "$FOCAS_PLATFORM" -t local/cnc-focas:1.0 focas ;;
+        admin|samba|ftp) docker build --pull --network host -t "local/punchtape-$t:1.0" "$t" ;;
+        focas) docker build --pull --network host --platform "$FOCAS_PLATFORM" -t local/punchtape-focas:1.0 focas ;;
         *) echo "Unknown image '$t' (admin, samba, ftp or focas)." >&2; exit 1 ;;
     esac
 done

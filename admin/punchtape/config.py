@@ -424,7 +424,7 @@ def set_admin_password_hash(password_hash):
 
 
 def focas_token():
-    """Shared secret between cnc-admin and the FOCAS bridge (created on first use)."""
+    """Shared secret between punchtape-admin and the FOCAS bridge (created on first use)."""
     try:
         with open(FOCAS_TOKEN_FILE) as f:
             return f.read().strip()

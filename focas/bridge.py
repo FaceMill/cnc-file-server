@@ -1,4 +1,4 @@
-"""FOCAS bridge: a small JSON API on 127.0.0.1 that cnc-admin calls.
+"""FOCAS bridge: a small JSON API on 127.0.0.1 that punchtape-admin calls.
 
 Runs in its own container because libfwlib32 only exists for armv7/x86/x64:
 on a Pi (64-bit ARM) that is a 32-bit ARM container.
@@ -92,7 +92,7 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def _handle(self, method):
-        # Everything on the Pi shares the host network: only cnc-admin knows the token.
+        # Everything on the Pi shares the host network: only punchtape-admin knows the token.
         if not hmac.compare_digest(self.headers.get("X-Focas-Token", ""), TOKEN):
             return self._reply(403, {"error": "missing or wrong token"})
         url = urlparse(self.path)

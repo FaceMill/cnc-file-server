@@ -1,6 +1,6 @@
 import json, re, time
 from werkzeug.security import generate_password_hash
-from cncadmin import config, create_app, network
+from punchtape import config, create_app, network
 
 network.CONFIRM_SECONDS = 3
 network.APPLY_DELAY_SECONDS = 0

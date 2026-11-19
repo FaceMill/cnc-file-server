@@ -19,5 +19,5 @@ case "${1:-}" in
     *) echo "Usage: sudo $0 [--generate]" >&2; exit 1 ;;
 esac
 
-docker compose run --rm --no-deps cnc-admin python -m cncadmin.cli set-admin-password "$@"
+docker compose run --rm --no-deps punchtape-admin python -m punchtape.cli set-admin-password "$@"
 echo "After 5 wrong passwords the login page locks that computer out for 5 minutes; wait it out if it still refuses."

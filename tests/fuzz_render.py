@@ -2,7 +2,7 @@
 that the real tools accept. Writes each accepted render to /out/<n>/ for
 testparm / nft -c checks, plus a manifest of what each case contained."""
 import json, os, random, sys
-from cncadmin import config, render
+from punchtape import config, render
 
 random.seed(int(sys.argv[1]) if len(sys.argv) > 1 else 1)
 N = int(sys.argv[2]) if len(sys.argv) > 2 else 300

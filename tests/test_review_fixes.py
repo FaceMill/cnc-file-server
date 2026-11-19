@@ -1,7 +1,7 @@
 """Regression tests for the review findings (one check per fix)."""
 import io, json, os, re, stat, time
 from werkzeug.security import generate_password_hash
-from cncadmin import config, create_app, events, network, render, serial_dnc, system
+from punchtape import config, create_app, events, network, render, serial_dnc, system
 
 network.APPLY_DELAY_SECONDS = 0
 config.set_admin_password_hash(generate_password_hash("correct-horse-1"))

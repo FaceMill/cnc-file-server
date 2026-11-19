@@ -16,7 +16,7 @@ fi
 
 git pull --ff-only
 ./host/build-images.sh
-docker compose run --rm --no-deps cnc-admin python -m cncadmin.cli render
+docker compose run --rm --no-deps punchtape-admin python -m punchtape.cli render
 nft -c -f /etc/nftables.conf
 nft -f /etc/nftables.conf
 docker compose up -d --force-recreate --remove-orphans

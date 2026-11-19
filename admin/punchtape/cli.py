@@ -1,9 +1,9 @@
 """Command-line setup used by host/install.sh.
 
-    python -m cncadmin.cli init [--office-subnet CIDR] [--force]
-    python -m cncadmin.cli render
-    python -m cncadmin.cli set-admin-password [--generate]
-    python -m cncadmin.cli office-mode --hotspot SSID [--password PW] | --client [--office-subnet CIDR]
+    python -m punchtape.cli init [--office-subnet CIDR] [--force]
+    python -m punchtape.cli render
+    python -m punchtape.cli set-admin-password [--generate]
+    python -m punchtape.cli office-mode --hotspot SSID [--password PW] | --client [--office-subnet CIDR]
 """
 import argparse
 import getpass
@@ -101,7 +101,7 @@ def cmd_set_admin_password(args):
 
 
 def main():
-    parser = argparse.ArgumentParser(prog="cncadmin")
+    parser = argparse.ArgumentParser(prog="punchtape")
     sub = parser.add_subparsers(required=True)
     p = sub.add_parser("init")
     p.add_argument("--office-subnet")

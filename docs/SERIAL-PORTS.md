@@ -5,7 +5,7 @@ machine and the **Serial port** field in the admin page: adapters, cables, the P
 a test, so you know a step works before you rely on it in the next one.
 
 ```
- CNC RS-232 port ──cable── USB-serial adapter ──USB── Raspberry Pi ─Docker── cnc-admin container
+ CNC RS-232 port ──cable── USB-serial adapter ──USB── Raspberry Pi ─Docker── punchtape-admin container
    (DB25/DB9)     (null modem   (FTDI etc.)           /dev/ttyUSB0             /dev/serial/by-id/...
                    + jumpers)                         /dev/serial/by-id/...    (same device)
 ```
@@ -314,7 +314,7 @@ If your adapter shows a different major number, add a matching rule, e.g. `"c 20
 ### Built-in COM ports (`/dev/ttyS0`)
 
 A motherboard or PCI-card COM port is `/dev/ttyS*` with **major number 4**. Major 4 also covers the
-system consoles, so don't add a `c 4:*` rule. Pass in just that port, by adding to the `cnc-admin` service:
+system consoles, so don't add a `c 4:*` rule. Pass in just that port, by adding to the `punchtape-admin` service:
 
 ```yaml
     devices:
@@ -337,17 +337,17 @@ With the stack running (`sudo docker compose up -d`):
 
 ```bash
 # Does the container see the ports?
-sudo docker exec cnc-admin ls -l /dev/serial/by-id/
+sudo docker exec punchtape-admin ls -l /dev/serial/by-id/
 
 # Full list with details, as Python sees it
-sudo docker exec cnc-admin python -m serial.tools.list_ports -v
+sudo docker exec punchtape-admin python -m serial.tools.list_ports -v
 ```
 
 To test that the container can open the port and run a loopback test, first **untick "Enabled"** for that
 machine in the admin page, so the port is free. Then, with pins 2–3 shorted:
 
 ```bash
-sudo docker exec cnc-admin python -c "
+sudo docker exec punchtape-admin python -c "
 import serial, sys
 p = serial.Serial(sys.argv[1], 9600, timeout=1)
 p.write(b'LOOPBACK OK'); print(p.read(11))
@@ -427,7 +427,7 @@ Useful commands:
 sudo dmesg | grep -iE "tty|ftdi|pl2303|ch34" | tail     # driver messages
 udevadm info /dev/ttyUSB0                              # adapter details
 sudo fuser -v /dev/ttyUSB0                             # which process has the port open
-sudo docker compose logs --tail 50 cnc-admin           # container log
+sudo docker compose logs --tail 50 punchtape-admin           # container log
 ```
 
 **Logs → DNC activity** in the admin page shows each machine's port open/close events, requests and errors.

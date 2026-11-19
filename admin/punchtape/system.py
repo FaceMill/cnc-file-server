@@ -1,6 +1,6 @@
 """Host-side actions: firewall, NetworkManager, Docker containers, machine folders, status.
 
-Set CNC_ADMIN_DRY_RUN=1 to log host-changing actions instead of running them
+Set PUNCHTAPE_DRY_RUN=1 to log host-changing actions instead of running them
 (for development off the Pi).
 """
 import datetime
@@ -16,9 +16,9 @@ from concurrent.futures import ThreadPoolExecutor
 
 from . import render, serial_dnc
 
-log = logging.getLogger("cncadmin")
+log = logging.getLogger("punchtape")
 
-DRY_RUN = os.environ.get("CNC_ADMIN_DRY_RUN") == "1"
+DRY_RUN = os.environ.get("PUNCHTAPE_DRY_RUN") == "1"
 SRV_DIR = os.environ.get("CNC_SRV_DIR", "/srv/cnc")
 REMOVED_DIR = os.path.join(SRV_DIR, ".removed")
 CNC_UID = int(os.environ.get("CNC_UID", "2000"))
@@ -29,7 +29,7 @@ CNC_CONN = "cnc-net"
 SAMBA_OFFICE = "samba-office"
 SAMBA_CNC = "samba-cnc"
 FTP_CNC = "ftp-cnc"
-SERVICES = [SAMBA_OFFICE, SAMBA_CNC, FTP_CNC, "focas-bridge", "filebrowser", "caddy", "portainer", "cnc-admin"]
+SERVICES = [SAMBA_OFFICE, SAMBA_CNC, FTP_CNC, "focas-bridge", "filebrowser", "caddy", "portainer", "punchtape-admin"]
 
 
 def run(cmd, *, host_change=True, env=None, timeout=60):

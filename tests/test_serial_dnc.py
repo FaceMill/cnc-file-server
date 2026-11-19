@@ -1,9 +1,9 @@
-"""Merged serial-dnc engine inside cnc-admin, against a fake FANUC on a TCP
+"""Merged serial-dnc engine inside punchtape-admin, against a fake FANUC on a TCP
 serial device server (192.168.50.40:4001 on lo)."""
 import glob, os, re, socket, threading, time
 from werkzeug.security import generate_password_hash
-from cncadmin import config, create_app, events
-from cncadmin.serial_dnc import manager
+from punchtape import config, create_app, events
+from punchtape.serial_dnc import manager
 
 XON, XOFF = b"\x11", b"\x13"
 

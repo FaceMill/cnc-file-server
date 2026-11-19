@@ -1,12 +1,12 @@
 #!/bin/bash
 # Configure nightly backups: asks for the destination, creates a random repository
 # password, initialises the repository and runs a first backup.
-#   sudo /opt/cnc-server/host/setup-backup.sh
+#   sudo /opt/punchtape/host/setup-backup.sh
 set -euo pipefail
 
 PROJECT_DIR=$(cd "$(dirname "$0")/.." && pwd)
-ENV_FILE=/etc/cnc-backup.env
-PASS_FILE=/etc/cnc-backup.pass
+ENV_FILE=/etc/punchtape-backup.env
+PASS_FILE=/etc/punchtape-backup.pass
 
 cat <<'EOF'
 Backup destination (a restic repository), for example:
@@ -42,7 +42,7 @@ if ! restic cat config >/dev/null 2>&1; then
     restic init
 fi
 # Marker that backup.sh checks for on local destinations (catches an unmounted disk).
-case "$repo" in /*) touch "$repo/.cnc-backup-repository" ;; esac
+case "$repo" in /*) touch "$repo/.punchtape-backup-repository" ;; esac
 
 echo
 echo "Repository password (stored in $PASS_FILE). WRITE IT DOWN and keep it off the Pi:"
@@ -51,5 +51,5 @@ echo
 echo "    $(cat "$PASS_FILE")"
 echo
 FORCE_CHECK=1 "$PROJECT_DIR/host/backup.sh"
-systemctl enable --now cnc-backup.timer
-echo "Nightly backups enabled (cnc-backup.timer)."
+systemctl enable --now punchtape-backup.timer
+echo "Nightly backups enabled (punchtape-backup.timer)."

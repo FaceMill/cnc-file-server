@@ -16,7 +16,7 @@ import time
 
 from . import config, events, system
 
-log = logging.getLogger("cncadmin")
+log = logging.getLogger("punchtape")
 
 CHECK_EVERY_SECONDS = 6 * 3600   # age-based, so running often is harmless
 FIRST_CHECK_SECONDS = 300        # not right at boot

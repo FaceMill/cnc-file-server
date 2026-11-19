@@ -2,7 +2,7 @@
 on the Office users page as the login prefix (CNC-FILES\\user)."""
 import os
 from werkzeug.security import generate_password_hash
-from cncadmin import config, render, create_app
+from punchtape import config, render, create_app
 
 fails = []
 

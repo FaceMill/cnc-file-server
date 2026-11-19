@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Host health snapshot for the admin page (run by cnc-health.timer every 5 minutes).
+"""Host health snapshot for the admin page (run by punchtape-health.timer every 5 minutes).
 
 Collects what only the host can see: SoC temperature and throttling, SSD wear,
 time sync, UPS state and disk space. Writes JSON to <project>/config/host-health.json;
-cnc-admin turns it into warnings on the Status page and alert emails.
+punchtape-admin turns it into warnings on the Status page and alert emails.
 Standard library only; every probe is optional and never fails the whole run.
 """
 import glob

@@ -3,8 +3,8 @@ exclusive lock, out_waiting/drain), a 1 MB drip-feed at 115200 with XON/XOFF, an
 concurrency stress test of the admin page."""
 import hashlib, os, select, threading, time, tty
 from werkzeug.security import generate_password_hash
-from cncadmin import config, create_app, events
-from cncadmin.serial_dnc import manager
+from punchtape import config, create_app, events
+from punchtape.serial_dnc import manager
 
 
 def check(cond, msg):

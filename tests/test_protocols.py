@@ -2,7 +2,7 @@
 FANUC on a TCP serial device server (192.168.50.40:4001 added to lo)."""
 import os, re
 from werkzeug.security import generate_password_hash
-from cncadmin import config, create_app
+from punchtape import config, create_app
 
 config.set_admin_password_hash(generate_password_hash("correct-horse-1"))
 app = create_app()

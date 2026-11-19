@@ -14,7 +14,7 @@ import time
 
 from . import config, system
 
-log = logging.getLogger("cncadmin")
+log = logging.getLogger("punchtape")
 
 CONFIRM_SECONDS = 120
 # Switching the setup hotspot on or off: time to move the laptop to the other Wi-Fi network

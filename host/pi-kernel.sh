@@ -23,10 +23,10 @@ if [ ! -f "$CONFIG_TXT" ]; then
     exit 1
 fi
 
-cp "$CONFIG_TXT" "$CONFIG_TXT.before-cnc-server"
-printf '\n# cnc-server: 4K-page kernel, needed by FANUC'\''s 32-bit ARM FOCAS library\n[all]\nkernel=kernel8.img\n' >> "$CONFIG_TXT"
+cp "$CONFIG_TXT" "$CONFIG_TXT.before-punchtape"
+printf '\n# punchtape: 4K-page kernel, needed by FANUC'\''s 32-bit ARM FOCAS library\n[all]\nkernel=kernel8.img\n' >> "$CONFIG_TXT"
 echo "This Pi runs a kernel with $page-byte memory pages, which can't run FANUC's 32-bit ARM" >&2
 echo "FOCAS library. Switched to Raspberry Pi's standard 4K-page kernel in $CONFIG_TXT" >&2
-echo "(backup: $CONFIG_TXT.before-cnc-server)." >&2
+echo "(backup: $CONFIG_TXT.before-punchtape)." >&2
 echo "Reboot (sudo reboot), then run the installer again." >&2
 exit 2

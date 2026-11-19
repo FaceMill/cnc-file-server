@@ -1,9 +1,9 @@
 """Create the demo site: one machine of each kind, sample programs, admin password
-'demo-password'. Runs inside the cnc-admin image with CNC_ADMIN_DRY_RUN=1."""
+'demo-password'. Runs inside the punchtape-admin image with PUNCHTAPE_DRY_RUN=1."""
 from werkzeug.security import generate_password_hash
 
-from cncadmin import config, system
-from cncadmin.ntlm import nt_hash
+from punchtape import config, system
+from punchtape.ntlm import nt_hash
 
 site = config.default_site("10.20.0.0/16", "eth9", "eth8")
 site["machines"][0]["label"] = "Haas VF-2 (Bay 1)"

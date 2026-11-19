@@ -1,7 +1,7 @@
 """Recycle folders: retention setting, scheduled emptying by age, Empty now."""
 import json, os, re, time
 from werkzeug.security import generate_password_hash
-from cncadmin import config, create_app, events, recycle
+from punchtape import config, create_app, events, recycle
 
 config.set_admin_password_hash(generate_password_hash("correct-horse-1"))
 app = create_app()

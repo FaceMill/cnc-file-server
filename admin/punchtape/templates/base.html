@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{% block title %}CNC File Server{% endblock %} · CNC Admin</title>
+<title>{% block title %}CNC file server{% endblock %} · PunchTape</title>
 <style>
   :root { {% for k, v in theme_vars.items() %}--{{ k }}:{{ v }}; {% endfor %}}
   * { box-sizing: border-box; }
@@ -53,7 +53,7 @@
 <body>
 {% if session.user %}
 <header>
-  <div class="brand">{% if look.logo %}<img src="{{ url_for('web.branding_logo', v=look.logo_version) }}" alt="">{% endif %}CNC File Server</div>
+  <div class="brand">{% if look.logo %}<img src="{{ url_for('web.branding_logo', v=look.logo_version) }}" alt="">{% endif %}PunchTape</div>
   <nav>
     {% set ep = request.endpoint or '' %}
     <a href="{{ url_for('web.dashboard') }}" class="{{ 'active' if ep == 'web.dashboard' }}">Status</a>

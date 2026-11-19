@@ -1,6 +1,6 @@
 #!/bin/bash
 # Prepares NetworkManager connections (Raspberry Pi OS Bookworm or Trixie) with the names
-# cnc-admin manages:
+# punchtape-admin manages:
 #   office-net  OFFICE_IF (eth0, or wlan0 on a Wi-Fi test bench); the active connection is
 #               renamed, so its DHCP/static settings (and Wi-Fi password) are kept.
 #               OFFICE_MODE=hotspot: left to host/setup-hotspot.sh

@@ -2,7 +2,7 @@
 import json, os, re, socketserver, threading, time
 from collections import namedtuple
 from werkzeug.security import generate_password_hash
-from cncadmin import config, create_app, events, monitor, system
+from punchtape import config, create_app, events, monitor, system
 
 fails = []
 MAIL = []
