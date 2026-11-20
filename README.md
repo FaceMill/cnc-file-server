@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/img/logo.svg" alt="PunchTape" width="560">
+</p>
+
 # PunchTape
 
 **An open-source DNC server and CNC file server for Haas, FANUC, Siemens, Heidenhain,
@@ -8,6 +12,10 @@ Old controls read their programs from punched paper tape. Their descendants stil
 SMB1, plain FTP and RS-232. PunchTape is the modern tape reader: it serves programs to
 machines that only speak those protocols, while the office side sees nothing but encrypted
 SMB3.
+
+<sub>The holes in the logo are real: eight-level tape, 7-bit ASCII on tracks 1–7 with an
+even-parity bit on track 8, feed hole between tracks 3 and 4. They spell `PUNCHTAPE`.
+Regenerate it with `python3 tools/make_logo.py`.</sub>
 
 A set of Docker containers that lets old CNC machines share programs with the office
 **without exposing insecure protocols on the office network**. It runs on any Linux machine
@@ -316,6 +324,7 @@ host/             install.sh, update.sh, reset-admin-password.sh, setup-network.
 docs/             INSTALL.md, RUNBOOK.md (shop staff), cnc-client-setup.md (per control),
                    SERIAL-PORTS.md (adapters, cables), img/ (screenshots used here)
 tests/            all test suites and the simulated-Pi full-stack test
+tools/            make_logo.py (regenerates docs/img/logo.svg and logo.png)
 docker-compose.yml
 PLAN.md           design decisions, review findings, open items
 ```
