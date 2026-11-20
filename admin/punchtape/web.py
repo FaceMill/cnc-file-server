@@ -20,7 +20,7 @@ from werkzeug.utils import secure_filename
 
 from . import config, system
 from .config import MACHINE_TYPES, PROTOCOLS, SERIAL_CHOICES, SERIAL_DEFAULTS
-from . import appearance, dnc_files, events, focas_client, monitor, recycle
+from . import appearance, dnc_files, events, focas_client, logo, monitor, recycle
 from .serial_dnc import manager as dnc
 from .network import CONFIRM_SECONDS, HOTSPOT_CONFIRM_SECONDS, office_change
 from .ntlm import nt_hash
@@ -64,6 +64,7 @@ def inject_globals():
     look = config.load()["appearance"] if config.exists() else appearance.normalize({})
     return {"csrf": session["csrf"], "pending": office_change.status(),
             "theme_vars": appearance.css_vars(look), "look": look,
+            "logo_svg": logo.INLINE,
             "pending_error": office_change.last_error, "machine_types": MACHINE_TYPES,
             "protocols": PROTOCOLS, "protocol_of": config.protocol}
 

@@ -14,8 +14,10 @@ machines that only speak those protocols, while the office side sees nothing but
 SMB3.
 
 <sub>The holes in the logo are real: eight-level tape, 7-bit ASCII on tracks 1–7 with an
-even-parity bit on track 8, feed hole between tracks 3 and 4. They spell `PUNCHTAPE`.
-Regenerate it with `python3 tools/make_logo.py`.</sub>
+even-parity bit on track 8, feed hole between tracks 3 and 4. They spell `PUNCHTAPE`. The
+admin pages draw the same logo in whatever accent colour you pick on the Settings page;
+`admin/punchtape/logo.py` holds the geometry and `python3 tools/make_logo.py` rewrites the
+files used here.</sub>
 
 A set of Docker containers that lets old CNC machines share programs with the office
 **without exposing insecure protocols on the office network**. It runs on any Linux machine
@@ -324,7 +326,7 @@ host/             install.sh, update.sh, reset-admin-password.sh, setup-network.
 docs/             INSTALL.md, RUNBOOK.md (shop staff), cnc-client-setup.md (per control),
                    SERIAL-PORTS.md (adapters, cables), img/ (screenshots used here)
 tests/            all test suites and the simulated-Pi full-stack test
-tools/            make_logo.py (regenerates docs/img/logo.svg and logo.png)
+tools/            make_logo.py (rewrites docs/img/logo.svg and logo.png)
 docker-compose.yml
 PLAN.md           design decisions, review findings, open items
 ```

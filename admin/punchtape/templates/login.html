@@ -1,8 +1,13 @@
 {% extends "base.html" %}
 {% block title %}Log in{% endblock %}
 {% block content %}
+<style>
+  .login-logo svg { height:58px; width:auto; display:block;
+                    margin:0 auto 14px; color:var(--accent); }
+</style>
 <div class="card" style="max-width:420px;margin:60px auto">
-  {% if look.logo %}<img src="{{ url_for('web.branding_logo', v=look.logo_version) }}" alt="" style="max-height:80px;max-width:240px;display:block;margin:0 auto 12px">{% endif %}
+  {% if look.logo %}<img src="{{ url_for('web.branding_logo', v=look.logo_version) }}" alt="" style="max-height:80px;max-width:240px;display:block;margin:0 auto 12px">
+  {% else %}<div class="login-logo">{{ logo_svg|safe }}</div>{% endif %}
   <h1>PunchTape</h1>
   <p class="hint" style="margin:-6px 0 16px">CNC file server and DNC</p>
   {% if not configured %}

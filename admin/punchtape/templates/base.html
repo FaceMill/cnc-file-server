@@ -11,6 +11,7 @@
   header { background:var(--header-bg); color:var(--header-fg); padding:0 20px; display:flex; align-items:center; gap:24px; }
   header .brand { font-weight:600; padding:10px 0; display:flex; align-items:center; gap:10px; }
   header .brand img { max-height:32px; max-width:140px; }
+  header .brand svg { height:26px; width:auto; display:block; color:var(--nav-active); }
   header nav a { color:var(--nav-fg); text-decoration:none; padding:14px 8px; display:inline-block; }
   header nav a.active, header nav a:hover { color:var(--header-fg); box-shadow: inset 0 -3px 0 var(--nav-active); }
   a { color:var(--accent); }
@@ -53,7 +54,7 @@
 <body>
 {% if session.user %}
 <header>
-  <div class="brand">{% if look.logo %}<img src="{{ url_for('web.branding_logo', v=look.logo_version) }}" alt="">{% endif %}PunchTape</div>
+  <div class="brand">{% if look.logo %}<img src="{{ url_for('web.branding_logo', v=look.logo_version) }}" alt="">{% else %}{{ logo_svg|safe }}{% endif %}PunchTape</div>
   <nav>
     {% set ep = request.endpoint or '' %}
     <a href="{{ url_for('web.dashboard') }}" class="{{ 'active' if ep == 'web.dashboard' }}">Status</a>
